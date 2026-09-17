@@ -8,7 +8,7 @@ backend, optional containerized lambdas, and infra.
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
 | `pr-validation.yml` | Pull requests | Backend tests/build, lambda tests, Terraform validate |
-| `branch-policy.yml` | PRs → `main` | Require head branch `release/*` or `hotfix/*` |
+| `branch-policy.yml` | PRs → `main` | `main-from-release-only` + `release-contains-develop` |
 | `security-monthly.yml` | First Monday monthly | npm audit, pip/Trivy filesystem scan |
 | `deploy-dev.yml` | Manual (`workflow_dispatch`) | Images → `cht-reports-dev-*` ECR, Terraform apply dev |
 | `deploy-prod.yml` | Manual (`workflow_dispatch`) | Images → `cht-reports-prod-*` ECR, Terraform apply production |
@@ -41,8 +41,15 @@ Deploys: Actions → Deploy to Development / Deploy to Production → Run workfl
 ```
 
 GitHub **rulesets** on `main`: require PRs, require checks
-`main-from-release-only` and `release-contains-develop`. Same as
-cht-platform-tool (see that repo’s `.github/CI_CD.md` for the ruleset table).
+`main-from-release-only` and `release-contains-develop` (same names as
+cht-platform-tool). Cut releases from `develop`:
+
+```bash
+git checkout develop && git pull && git checkout -b release/v1.0.0
+```
+
+GitHub only lists a check in a ruleset after it has run once. Open a PR from
+`release/*` → `main` so both jobs appear, then add them as required status checks.
 
 ## OIDC
 
