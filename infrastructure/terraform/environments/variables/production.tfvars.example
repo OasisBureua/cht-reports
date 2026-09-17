@@ -1,0 +1,27 @@
+# CHT Reports: production.tfvars.example
+# Copy to production.tfvars for local applies:
+#   cp production.tfvars.example production.tfvars
+#
+# Non-secret infra values mirror production.github.tfvars; secrets are left blank.
+
+project     = "cht-reports"
+environment = "production"
+
+lambda_images = {
+  generator = "233636046512.dkr.ecr.us-east-1.amazonaws.com/cht-reports-prod-generator:v1.0.0"
+}
+
+lambda_timeout     = 300
+lambda_memory_size = 1024
+
+generate_schedule_expression = "cron(0 6 * * ? *)"
+enable_generate_schedule     = true
+
+contenthub_base_url = "https://contenthub.communityhealth.media/api/public"
+contenthub_api_key  = ""
+
+alarm_notification_emails = [
+  "uchenna@communityhealth.media",
+  "sebastien@communityhealth.media",
+]
+s3_force_destroy = false

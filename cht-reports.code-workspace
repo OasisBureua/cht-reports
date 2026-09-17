@@ -1,0 +1,13 @@
+{
+  "folders": [
+    {
+      "path": ".",
+      "name": "cht-reports"
+    },
+    {
+      "path": "infrastructure/terraform/environments/us-east-1",
+      "name": "Terraform (us-east-1)"
+    }
+  ],
+  "settings": {}
+}

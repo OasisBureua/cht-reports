@@ -1,0 +1,70 @@
+name: Rollback Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to rollback'
+        required: true
+        type: choice
+        options:
+          - production
+          - development
+      lambda_version:
+        description: 'Published Lambda version to point live at (e.g. 12)'
+        required: true
+        type: string
+
+env:
+  AWS_REGION: us-east-1
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  rollback:
+    name: Rollback live alias
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set function name
+        id: targets
+        run: |
+          if [ "${{ inputs.environment }}" = "production" ]; then
+            echo "function=cht-reports-prod-generator" >> "$GITHUB_OUTPUT"
+          else
+            echo "function=cht-reports-dev-generator" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update live alias
+        env:
+          FUNCTION: ${{ steps.targets.outputs.function }}
+          VERSION: ${{ inputs.lambda_version }}
+        run: |
+          aws lambda update-alias \
+            --function-name "$FUNCTION" \
+            --name live \
+            --function-version "$VERSION" \
+            --region "$AWS_REGION"
+          echo "live → ${FUNCTION}:$VERSION"
+
+      - name: Smoke invoke
+        run: |
+          chmod +x scripts/smoke.sh
+          if [ "${{ inputs.environment }}" = "production" ]; then
+            ./scripts/smoke.sh production
+          else
+            ./scripts/smoke.sh dev
+          fi

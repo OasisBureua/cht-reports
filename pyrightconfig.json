@@ -1,0 +1,6 @@
+{
+  "include": ["lambdas"],
+  "exclude": ["**/__pycache__", ".venv", "venv"],
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "basic"
+}
