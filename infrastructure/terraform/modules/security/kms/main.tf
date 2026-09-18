@@ -106,6 +106,23 @@ resource "aws_kms_alias" "cloudwatch" {
   target_key_id = aws_kms_key.cloudwatch.key_id
 }
 
+resource "aws_kms_key" "dynamodb" {
+  description             = "${local.prefix} DynamoDB encryption key"
+  deletion_window_in_days = var.deletion_window_in_days
+  enable_key_rotation     = true
+
+  tags = {
+    Name        = "${local.prefix}-dynamodb-key"
+    Environment = var.environment
+    Service     = "dynamodb"
+  }
+}
+
+resource "aws_kms_alias" "dynamodb" {
+  name          = "alias/${local.prefix}-dynamodb"
+  target_key_id = aws_kms_key.dynamodb.key_id
+}
+
 resource "aws_kms_key" "sns" {
   description             = "${local.prefix} SNS encryption key"
   deletion_window_in_days = var.deletion_window_in_days

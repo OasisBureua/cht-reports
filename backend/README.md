@@ -1,6 +1,8 @@
 # CHT Reports API
 
-NestJS backend. Feature modules go under `src/modules/` as they are built.
+NestJS SQS worker. Feature code lives under `src/reports/` (packet, preprocess,
+orchestrator, state, render). Shared AWS SDK clients: `src/aws/`. Companion
+`/generate` client: `src/companion/`.
 
 ```bash
 npm ci
@@ -8,5 +10,5 @@ cp .env.example .env
 npm run start:dev
 ```
 
-- API: http://localhost:3000/api
-- Health: http://localhost:3000/api/health
+- Health: http://localhost:3000/health
+- Ready: http://localhost:3000/health/ready

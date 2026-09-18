@@ -21,5 +21,21 @@ enable_generate_schedule     = true
 contenthub_base_url = "https://devhub.communityhealth.media/api/public"
 contenthub_api_key  = ""
 
+# cht-platform-tool export contract (CPR-13/14), used by the ECS orchestration
+# service, not the same target as contenthub_base_url above (see the
+# variable comment in variables.tf).
+platform_tool_base_url = "https://devapp.communityhealth.media/api/export"
+platform_tool_api_key  = ""
+
 alarm_notification_emails = []
 s3_force_destroy          = true
+
+# ECS orchestration service. Joins cht-platform-tool's existing dev cluster
+# and Service Connect namespace (see infrastructure/terraform/modules/compute/ecs-cluster).
+reports_service_image_uri            = "233636046512.dkr.ecr.us-east-1.amazonaws.com/cht-reports-dev-service:1.0.0"
+platform_cluster_name                = "cht-dev-cluster"
+platform_vpc_name                    = "cht-dev-vpc"
+platform_backend_security_group_name = "cht-dev-backend-sg"
+service_connect_namespace_name       = "cht-dev.local"
+companion_bff_auth_secret_name = "cht-dev-companion-bff-auth"
+companion_kms_alias            = "alias/cht-dev-companion"
