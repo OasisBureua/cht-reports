@@ -37,12 +37,10 @@ variable "enable_generate_schedule" {
   default     = true
 }
 
-# Used by the generator Lambda. handler.py has no implementation yet
-# beyond a comment referencing "Content Hub snapshots." Not the same
-# target as platform_tool_base_url/api_key below; do not consolidate
-# these without first confirming what the Lambda actually needs to call.
+# Origin or /api/public URL. The Nest worker rewrites to /api/admin for
+# GET .../campaigns/{id}/report-packet.
 variable "contenthub_base_url" {
-  description = "Content Hub API base URL (non-secret)"
+  description = "Content Hub API base URL (non-secret). Worker rewrites /api/public → /api/admin."
   type        = string
   default     = ""
 }
@@ -54,20 +52,16 @@ variable "contenthub_api_key" {
   sensitive   = true
 }
 
-# Used by the ECS orchestration service (module.ecs_backend). This is
-# cht-platform-tool, not Content Hub (Program, Survey, SurveyResponse,
-# WebinarParticipantEvent, and ZoomRecordingFile all live in
-# cht-platform-tool's schema). See platform-tool.client.ts. A plain API
-# key is a placeholder; CPR-12's Cognito M2M client_credentials flow is
-# the intended auth once CPR-13/14's export contract exists.
+# Unused by the ECS worker (packet comes from Content Hub). Kept so existing
+# GitHub TF_VAR_* / tfvars do not break until those secrets are retired.
 variable "platform_tool_base_url" {
-  description = "cht-platform-tool API base URL, for the export contract (CPR-13/14, non-secret)."
+  description = "Unused by cht-reports worker (Hub packet API). Placeholder for existing tfvars."
   type        = string
   default     = ""
 }
 
 variable "platform_tool_api_key" {
-  description = "cht-platform-tool API key placeholder (GitHub Environment secret → TF_VAR_platform_tool_api_key). Real auth is CPR-12's Cognito M2M once built."
+  description = "Unused by cht-reports worker. Placeholder so existing GitHub TF_VAR_* do not break."
   type        = string
   default     = ""
   sensitive   = true

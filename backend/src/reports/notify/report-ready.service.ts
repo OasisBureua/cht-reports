@@ -1,7 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { PublishCommand, SNSClient } from '@aws-sdk/client-sns';
-import type { AppEnv } from '../config/env';
-import { APP_ENV } from '../config/config.module';
+import { PublishCommand } from '@aws-sdk/client-sns';
+import type { AppEnv } from '../../config/env';
+import { APP_ENV } from '../../config/config.module';
+import { AwsClients } from '../../aws/aws-clients';
 
 export interface ReportReadyMessage {
   requestId: string;
@@ -11,12 +12,13 @@ export interface ReportReadyMessage {
 
 @Injectable()
 export class ReportReadyNotifier {
-  private readonly sns = new SNSClient({});
-
-  constructor(@Inject(APP_ENV) private readonly env: AppEnv) {}
+  constructor(
+    @Inject(APP_ENV) private readonly env: AppEnv,
+    private readonly aws: AwsClients,
+  ) {}
 
   async notify(message: ReportReadyMessage): Promise<void> {
-    await this.sns.send(
+    await this.aws.sns.send(
       new PublishCommand({
         TopicArn: this.env.reportReadyTopicArn,
         Message: JSON.stringify(message),

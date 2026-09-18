@@ -4,11 +4,12 @@
 
 | Path | Role |
 |------|------|
+| `backend/` | NestJS generate worker (`src/reports/`, `src/aws/`, `src/companion/`) |
 | `lambdas/<name>/` | One containerized Lambda per folder (`Dockerfile`, handler, tests) |
 | `infrastructure/terraform/` | AWS IaC (ECR, Lambda image functions, S3, SQS, EventBridge) |
 | `scripts/` | CI helpers, image tags, local verify/deploy |
 
-There is no frontend or long-running API in this repo.
+There is no public frontend in this repo. HTTP on the worker is health only.
 
 ## Prerequisites
 
@@ -42,6 +43,18 @@ From the repo root:
 3. Add the ECR repo name to `local.ecr_repository_names` in `infrastructure/terraform/environments/us-east-1/main.tf`.
 4. Add the image URI to `lambda_images` in `*.github.tfvars` / `*.tfvars.example`.
 5. CI builds every `lambdas/*/Dockerfile` when the lambda lane runs.
+
+## Environment variables (ECS worker)
+
+Set in Terraform (`ecs_backend` environment_variables / secret_arns):
+
+| Name | Purpose |
+|------|---------|
+| `CONTENTHUB_BASE_URL` | Content Hub origin or `/api/public` (rewritten to `/api/admin`) |
+| `CONTENTHUB_API_KEY` | S2S key for `GET .../report-packet` |
+| `REPORT_REQUESTS_QUEUE_URL` | Generate SQS queue |
+| `GENERATION_STATE_TABLE` | DynamoDB job table |
+| `COMPANION_INTERNAL_SECRET` | `X-BFF-Auth` for cht-companion `/generate` |
 
 ## Environment variables (Lambda)
 

@@ -11,19 +11,17 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
-import { PlatformToolClient, ReportInputPacket } from '../platform-tool/platform-tool.client';
-import { BedrockClient } from '../bedrock/bedrock.client';
-import { ReportDocService, ExecutiveSummaryContent } from '../report-doc/report-doc.service';
-import { ReportStorageService } from '../s3/report-storage.service';
-import { ReportReadyNotifier } from '../notify/report-ready.service';
-import { GenerationStateService } from '../generation-state/generation-state.service';
-import { cleanTranscriptText, splitPrerecordedLivestream } from '../preprocessing/transcript';
+import { CompanionClient } from '../companion/companion.client';
+import { ContentHubClient } from './packet/content-hub.client';
+import type { ReportInputPacket } from './packet/report-packet.types';
+import { ReportDocService, ExecutiveSummaryContent } from './render/report-doc.service';
+import { ReportStorageService } from './storage/report-storage.service';
+import { ReportReadyNotifier } from './notify/report-ready.service';
+import { GenerationStateService } from './state/generation-state.service';
+import { cleanTranscriptText, splitPrerecordedLivestream } from './preprocess/transcript';
 
 export interface ReportRequest {
   requestId: string;
-  // cuid() string, matching cht-platform-tool's Program.id, not a numeric
-  // id. See platform-tool.client.ts: campaign-to-program linkage itself is
-  // still an open question (Program has no campaignId field today).
   campaignId: string;
 }
 
@@ -32,8 +30,8 @@ export class ReportGenerationOrchestrator {
   private readonly logger = new Logger(ReportGenerationOrchestrator.name);
 
   constructor(
-    private readonly platformTool: PlatformToolClient,
-    private readonly bedrock: BedrockClient,
+    private readonly contentHub: ContentHubClient,
+    private readonly companion: CompanionClient,
     private readonly reportDoc: ReportDocService,
     private readonly storage: ReportStorageService,
     private readonly notifier: ReportReadyNotifier,
@@ -41,7 +39,7 @@ export class ReportGenerationOrchestrator {
   ) {}
 
   async handle(request: ReportRequest): Promise<void> {
-    const { requestId, campaignId } = request;
+    const { requestId } = request;
 
     let existing = await this.state.get(requestId);
     if (!existing) {
@@ -52,9 +50,19 @@ export class ReportGenerationOrchestrator {
       return;
     }
 
+    const campaignId = existing.campaignId ?? request.campaignId;
+    if (!campaignId) {
+      throw new Error(`Request ${requestId} has no campaignId; cannot fetch Content Hub packet`);
+    }
+
     try {
       await this.state.beginAttempt(requestId, 'pulling_data');
-      const packet = await this.platformTool.fetchReportInputPacket(campaignId);
+      const packet = await this.contentHub.fetchReportPacket({
+        campaignId,
+        windowStart: existing.windowStart,
+        windowEnd: existing.windowEnd,
+        sources: existing.sources,
+      });
 
       await this.state.markStatus(requestId, 'generating');
       const content = await this.generateContent(packet);
@@ -65,7 +73,7 @@ export class ReportGenerationOrchestrator {
       await this.state.markStatus(requestId, 'uploading');
       const s3Key = await this.storage.uploadReport(requestId, docxBuffer);
 
-      await this.notifier.notify({ requestId, campaignId, s3Key });
+      await this.notifier.notify({ requestId, campaignId: String(campaignId), s3Key });
       await this.state.markComplete(requestId);
 
       this.logger.log(`Request ${requestId} complete: ${s3Key}`);
@@ -78,15 +86,14 @@ export class ReportGenerationOrchestrator {
   }
 
   /**
-   * Assembles a report-generation prompt from the input packet and calls
-   * out to cht-companion's /generate for the completion. Preprocessing
-   * (filler-word cleaning, pre-record/livestream split) happens here, not
-   * in platform-tool.client.ts, so the raw transcript text cht-platform-tool
-   * returns stays untouched for anyone else who reads it later.
+   * Assembles a report-generation prompt from the Content Hub packet and
+   * calls cht-companion `/generate`. Filler-word cleaning and
+   * pre-record/livestream split happen here. Hub already ETL'd the warehouse
+   * copy; this path never queries Aurora or cht-platform-tool.
    */
   private async generateContent(packet: ReportInputPacket): Promise<ExecutiveSummaryContent> {
     const cleanedSessions = packet.sessions.map((session) => {
-      const cleaned = cleanTranscriptText(session.transcriptText);
+      const cleaned = cleanTranscriptText(session.transcriptText ?? '');
       const { prerecorded, livestream } = splitPrerecordedLivestream(cleaned);
       return { ...session, prerecorded, livestream };
     });
@@ -103,15 +110,20 @@ export class ReportGenerationOrchestrator {
     const transcriptContext = cleanedSessions
       .map(
         (s) =>
-          `Session: ${s.title ?? s.platformToolProgramId}\n${s.prerecorded}${s.livestream ? `\n\nQ&A:\n${s.livestream}` : ''}`,
+          `Session: ${s.title ?? s.platformToolProgramId ?? 'untitled'}\n${s.prerecorded}${s.livestream ? `\n\nQ&A:\n${s.livestream}` : ''}`,
       )
       .join('\n\n---\n\n');
 
     const surveyContext = packet.surveyResponses.map((r) => JSON.stringify(r.answers)).join('\n');
+    const platformContext = (packet.platformSlices ?? [])
+      .map((slice) => `${slice.platform} ${slice.fetchDate} (${slice.status}): ${JSON.stringify(slice.rows)}`)
+      .join('\n');
+    const hubspotContext = packet.hubspotRawData ? JSON.stringify(packet.hubspotRawData) : '';
 
-    const result = await this.bedrock.generate({
+    const result = await this.companion.generate({
       systemPrompt: EXECUTIVE_SUMMARY_SYSTEM_PROMPT,
-      userContent: `Transcripts:\n${transcriptContext}\n\nSurvey responses:\n${surveyContext}`,
+      userContent: `Transcripts:\n${transcriptContext}\n\nSurvey responses:\n${surveyContext}\n\nPlatform metrics:\n${platformContext}\n\nHubSpot:\n${hubspotContext}`,
+      temperature: 0.2,
     });
 
     const missingSources = Object.entries(packet.inputCompleteness)
@@ -119,7 +131,7 @@ export class ReportGenerationOrchestrator {
       .map(([source, v]) => `${source}: ${v.status}`);
 
     return {
-      title: `Executive Summary: Campaign ${packet.campaignId}`,
+      title: `Executive Summary: ${packet.campaignName ?? `Campaign ${packet.campaignId}`}`,
       variant,
       sections: parseGeneratedSections(result.text),
       inputCompletenessNote:
@@ -130,7 +142,7 @@ export class ReportGenerationOrchestrator {
   }
 }
 
-const EXECUTIVE_SUMMARY_SYSTEM_PROMPT = `You are generating an Executive Summary report for a CHM medical education campaign. Use only the transcript and survey data provided. Do not invent data not present in the input.`;
+const EXECUTIVE_SUMMARY_SYSTEM_PROMPT = `You are generating an Executive Summary report for a CHM medical education campaign. Use only the transcript, survey, platform metric, and HubSpot data provided. Do not invent data not present in the input.`;
 
 /**
  * Placeholder section parser. Real output-structure parsing (headline/body

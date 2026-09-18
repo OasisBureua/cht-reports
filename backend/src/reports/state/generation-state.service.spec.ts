@@ -1,24 +1,16 @@
 import { mockClient } from 'aws-sdk-client-mock';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { GenerationStateService } from './generation-state.service';
-import type { AppEnv } from '../config/env';
+import { AwsClients } from '../../aws/aws-clients';
+import { testEnv } from '../../config/test-env';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
 
-const testEnv: AppEnv = {
-  environment: 'test',
-  port: 3000,
-  reportsBucket: 'test-bucket',
-  platformToolBaseUrl: 'https://example.test',
-  platformToolApiKey: 'test-key',
-  reportRequestsQueueUrl: 'https://sqs.test/queue',
-  reportReadyTopicArn: 'arn:aws:sns:test',
-  generationStateTable: 'test-generation-state',
-  maxGenerationAttempts: 5,
-  bedrockModelId: 'test-model',
-  companionServiceConnectUrl: 'http://cht-companion:8080',
-  companionInternalSecret: 'test-secret',
-};
+function service(): GenerationStateService {
+  const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({ region: 'us-east-1' }));
+  return new GenerationStateService(testEnv, { dynamodb } as unknown as AwsClients);
+}
 
 describe('GenerationStateService', () => {
   beforeEach(() => {
@@ -27,9 +19,7 @@ describe('GenerationStateService', () => {
 
   it('initializes state with attempt_count 0', async () => {
     ddbMock.on(PutCommand).resolves({});
-    const service = new GenerationStateService(testEnv);
-
-    const state = await service.initialize('req-1');
+    const state = await service().initialize('req-1');
 
     expect(state.attemptCount).toBe(0);
     expect(state.status).toBe('queued');
@@ -49,8 +39,7 @@ describe('GenerationStateService', () => {
       },
     });
 
-    const service = new GenerationStateService(testEnv);
-    const state = await service.beginAttempt('req-1', 'pulling_data');
+    const state = await service().beginAttempt('req-1', 'pulling_data');
 
     expect(state.attemptCount).toBe(3);
   });
@@ -69,9 +58,7 @@ describe('GenerationStateService', () => {
       },
     });
 
-    const service = new GenerationStateService(testEnv);
-
-    await expect(service.beginAttempt('req-1', 'pulling_data')).rejects.toThrow(
+    await expect(service().beginAttempt('req-1', 'pulling_data')).rejects.toThrow(
       /exceeded max generation attempts/i,
     );
 
@@ -93,8 +80,7 @@ describe('GenerationStateService', () => {
       },
     });
 
-    const service = new GenerationStateService(testEnv);
-    const state = await service.get('req-1');
+    const state = await service().get('req-1');
 
     expect(state?.status).toBe('complete');
   });

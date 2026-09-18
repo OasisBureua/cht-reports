@@ -1,22 +1,7 @@
-import { BedrockClient, BedrockGenerationError } from './bedrock.client';
-import type { AppEnv } from '../config/env';
+import { CompanionClient, CompanionGenerationError } from './companion.client';
+import { testEnv } from '../config/test-env';
 
-const testEnv: AppEnv = {
-  environment: 'test',
-  port: 3000,
-  reportsBucket: 'test-bucket',
-  platformToolBaseUrl: 'https://example.test',
-  platformToolApiKey: 'test-key',
-  reportRequestsQueueUrl: 'https://sqs.test/queue',
-  reportReadyTopicArn: 'arn:aws:sns:test',
-  generationStateTable: 'test-generation-state',
-  maxGenerationAttempts: 5,
-  bedrockModelId: 'test-model',
-  companionServiceConnectUrl: 'http://cht-companion:8080',
-  companionInternalSecret: 'test-secret',
-};
-
-describe('BedrockClient', () => {
+describe('CompanionClient', () => {
   const originalFetch = global.fetch;
 
   afterEach(() => {
@@ -30,7 +15,7 @@ describe('BedrockClient', () => {
     });
     global.fetch = mockFetch as unknown as typeof fetch;
 
-    const client = new BedrockClient(testEnv);
+    const client = new CompanionClient(testEnv);
     const result = await client.generate({ systemPrompt: 'System', userContent: 'User content' });
 
     expect(result).toEqual({ text: 'Generated text.', finishReason: 'complete' });
@@ -56,17 +41,17 @@ describe('BedrockClient', () => {
     });
   });
 
-  it('throws BedrockGenerationError with the companion error message on a non-OK response', async () => {
+  it('throws CompanionGenerationError with the companion error message on a non-OK response', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: false,
       status: 502,
       json: async () => ({ error: { code: 'llm_timeout', message: 'bedrock unavailable' } }),
     }) as unknown as typeof fetch;
 
-    const client = new BedrockClient(testEnv);
+    const client = new CompanionClient(testEnv);
 
     await expect(client.generate({ systemPrompt: 'System', userContent: 'User' })).rejects.toThrow(
-      BedrockGenerationError,
+      CompanionGenerationError,
     );
     await expect(client.generate({ systemPrompt: 'System', userContent: 'User' })).rejects.toThrow(
       /bedrock unavailable/,
@@ -82,7 +67,7 @@ describe('BedrockClient', () => {
       },
     }) as unknown as typeof fetch;
 
-    const client = new BedrockClient(testEnv);
+    const client = new CompanionClient(testEnv);
 
     await expect(client.generate({ systemPrompt: 'System', userContent: 'User' })).rejects.toThrow(/HTTP 500/);
   });

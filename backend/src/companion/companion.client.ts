@@ -1,17 +1,11 @@
 /**
- * Client for cht-companion's POST /generate: a plain Bedrock completion,
- * no retrieval. Reached over Service Connect, same shared namespace as
- * cht-platform-tool (see infrastructure/terraform/modules/compute/ecs-cluster).
+ * Client for cht-companion POST /generate: a plain Bedrock completion,
+ * no retrieval. Reached over Service Connect.
  *
- * Not the same endpoint /chat uses. /chat does RAG retrieval (vector search
- * against the chat knowledge base) plus generation together, the wrong
- * shape for report generation, which assembles its own context (transcript
- * and survey packet) and needs a plain "prompt in, completion out" call.
- * /generate exists specifically for this.
+ * Not the same endpoint /chat uses. /chat does RAG; reports assemble their
+ * own Content Hub packet and need prompt-in / completion-out.
  *
- * Auth: X-BFF-Auth shared secret, same mechanism cht-companion's BFF uses,
- * provisioned via Secrets Manager (see infrastructure/terraform,
- * COMPANION_INTERNAL_SECRET / data.aws_secretsmanager_secret.companion_bff_auth).
+ * Auth: X-BFF-Auth (COMPANION_INTERNAL_SECRET).
  */
 
 import { Inject, Injectable, Logger } from '@nestjs/common';
@@ -32,7 +26,7 @@ export interface GenerateResult {
   tokensOutput?: number;
 }
 
-export class BedrockGenerationError extends Error {}
+export class CompanionGenerationError extends Error {}
 
 interface CompanionGenerateResponse {
   text: string;
@@ -45,8 +39,8 @@ interface CompanionErrorResponse {
 }
 
 @Injectable()
-export class BedrockClient {
-  private readonly logger = new Logger(BedrockClient.name);
+export class CompanionClient {
+  private readonly logger = new Logger(CompanionClient.name);
 
   constructor(@Inject(APP_ENV) private readonly env: AppEnv) {}
 
@@ -72,7 +66,7 @@ export class BedrockClient {
       const body = (await response.json().catch(() => null)) as CompanionErrorResponse | null;
       const message = body?.error?.message ?? `HTTP ${response.status}`;
       this.logger.error(`companion /generate failed (${response.status}): ${message}`);
-      throw new BedrockGenerationError(`companion /generate returned ${response.status}: ${message}`);
+      throw new CompanionGenerationError(`companion /generate returned ${response.status}: ${message}`);
     }
 
     const body = (await response.json()) as CompanionGenerateResponse;

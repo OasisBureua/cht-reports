@@ -1,22 +1,15 @@
 /**
  * Per-request generation state and retry tracking. Caps retries at 5
  * attempts so a failing pipeline step doesn't loop forever. Backed by
- * DynamoDB (infrastructure/terraform/modules/database/dynamodb), not the
- * reports.* Postgres schema. This is orchestration bookkeeping, written
- * far more often (every retry) than belongs in a relational schema shared
- * with Content Hub's own migrations.
+ * DynamoDB, not the reports.* Postgres schema. This is orchestration
+ * bookkeeping; CHT PutItem's the row, cht-reports UpdateItem's in place.
  */
 
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import {
-  DynamoDBDocumentClient,
-  GetCommand,
-  PutCommand,
-  UpdateCommand,
-} from '@aws-sdk/lib-dynamodb';
-import type { AppEnv } from '../config/env';
-import { APP_ENV } from '../config/config.module';
+import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import type { AppEnv } from '../../config/env';
+import { APP_ENV } from '../../config/config.module';
+import { AwsClients } from '../../aws/aws-clients';
 
 export type GenerationStatus =
   | 'queued'
@@ -29,6 +22,10 @@ export type GenerationStatus =
 
 export interface GenerationState {
   requestId: string;
+  campaignId: string | null;
+  sources: string[];
+  windowStart: string | null;
+  windowEnd: string | null;
   status: GenerationStatus;
   attemptCount: number;
   lastError: string | null;
@@ -42,14 +39,14 @@ const STATE_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
 @Injectable()
 export class GenerationStateService {
   private readonly logger = new Logger(GenerationStateService.name);
-  private readonly doc: DynamoDBDocumentClient;
 
-  constructor(@Inject(APP_ENV) private readonly env: AppEnv) {
-    this.doc = DynamoDBDocumentClient.from(new DynamoDBClient({}));
-  }
+  constructor(
+    @Inject(APP_ENV) private readonly env: AppEnv,
+    private readonly aws: AwsClients,
+  ) {}
 
   async get(requestId: string): Promise<GenerationState | null> {
-    const result = await this.doc.send(
+    const result = await this.aws.dynamodb.send(
       new GetCommand({
         TableName: this.env.generationStateTable,
         Key: { request_id: requestId },
@@ -63,6 +60,10 @@ export class GenerationStateService {
     const now = new Date().toISOString();
     const state: GenerationState = {
       requestId,
+      campaignId: null,
+      sources: [],
+      windowStart: null,
+      windowEnd: null,
       status: 'queued',
       attemptCount: 0,
       lastError: null,
@@ -71,12 +72,10 @@ export class GenerationStateService {
       expiresAt: Math.floor(Date.now() / 1000) + STATE_TTL_SECONDS,
     };
 
-    await this.doc.send(
+    await this.aws.dynamodb.send(
       new PutCommand({
         TableName: this.env.generationStateTable,
         Item: this.toItem(state),
-        // Don't clobber existing state on a re-delivered SQS message.
-        // Idempotent enqueue.
         ConditionExpression: 'attribute_not_exists(request_id)',
       }),
     );
@@ -84,10 +83,6 @@ export class GenerationStateService {
     return state;
   }
 
-  /**
-   * Record the start of a new attempt. Throws if max attempts is already
-   * reached, so callers fail the request instead of looping.
-   */
   async beginAttempt(requestId: string, status: GenerationStatus): Promise<GenerationState> {
     const current = await this.get(requestId);
     const attemptCount = (current?.attemptCount ?? 0) + 1;
@@ -142,7 +137,7 @@ export class GenerationStateService {
       sets.push('#last_error = :last_error');
     }
 
-    const result = await this.doc.send(
+    const result = await this.aws.dynamodb.send(
       new UpdateCommand({
         TableName: this.env.generationStateTable,
         Key: { request_id: requestId },
@@ -159,6 +154,10 @@ export class GenerationStateService {
   private toItem(state: GenerationState): Record<string, unknown> {
     return {
       request_id: state.requestId,
+      campaign_id: state.campaignId,
+      sources: state.sources,
+      window_start: state.windowStart,
+      window_end: state.windowEnd,
       status: state.status,
       attempt_count: state.attemptCount,
       last_error: state.lastError,
@@ -171,6 +170,10 @@ export class GenerationStateService {
   private fromItem(item: Record<string, unknown>): GenerationState {
     return {
       requestId: item.request_id as string,
+      campaignId: (item.campaign_id as string) ?? null,
+      sources: (item.sources as string[]) ?? [],
+      windowStart: (item.window_start as string) ?? null,
+      windowEnd: (item.window_end as string) ?? null,
       status: item.status as GenerationStatus,
       attemptCount: item.attempt_count as number,
       lastError: (item.last_error as string) ?? null,

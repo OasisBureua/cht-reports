@@ -22,8 +22,6 @@ export interface ExecutiveSummaryContent {
   title: string;
   variant: 'pre_record_and_webinar' | 'webinar_only' | 'pre_record_only';
   sections: ExecutiveSummarySection[];
-  // Per REP-GEN-002: surfaced as a final section so gaps in the input
-  // packet are visible in the delivered document, not just in logs.
   inputCompletenessNote: string | null;
 }
 

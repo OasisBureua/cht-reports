@@ -5,19 +5,11 @@
 # Connect namespace (cht-dev.local / cht.local) as cht-platform-tool and
 # cht-companion for free, since they already share that cluster.
 #
-# Two things are not reachable this way, for different reasons:
-#   - cht-platform-tool's export API (CPR-13/14, sessions/attendance/survey
-#     data): reached over plain HTTPS, not Service Connect, even though
-#     cht-reports shares a cluster with cht-platform-tool. The export
-#     contract is a public API surface, not an internal Service Connect
-#     route. See modules/security/secrets-manager (PLATFORM_TOOL_API_KEY)
-#     and the platform_tool_base_url variable in the root module.
-#   - Content Hub: runs its own separate ECS cluster (contenthub-cluster /
-#     contenthub-dev-cluster) with no shared VPC or Cloud Map bridge today.
-#     cht-reports reaches its own reports.* schema there via a direct
-#     Aurora connection string (schema-sharing design, not yet built), not
-#     an HTTP API. Content Hub is a database cht-reports writes to, not a
-#     service cht-reports calls.
+# Content Hub is not on this cluster (contenthub-cluster / contenthub-dev-cluster,
+# no shared VPC or Cloud Map). cht-reports reaches it over HTTPS:
+# GET /api/admin/campaigns/{id}/report-packet with CONTENTHUB_API_KEY.
+# cht-reports has no Aurora role. Platform-tool export is Hub ingest, not
+# this worker.
 
 data "aws_ecs_cluster" "platform" {
   cluster_name = var.platform_cluster_name

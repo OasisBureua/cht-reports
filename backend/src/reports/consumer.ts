@@ -1,32 +1,27 @@
 /**
  * Polls the report-requests SQS queue (see infrastructure/terraform,
- * module.sqs_report_requests, separate from the scheduled-batch
- * "generate" queue the Lambda consumes). Long-polling loop started on
- * module init, stopped on shutdown; NestJS's own lifecycle hooks manage
- * this rather than a bespoke process supervisor.
+ * module.sqs_report_requests). Long-polling loop started on module init,
+ * stopped on shutdown.
  */
 
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import {
-  DeleteMessageCommand,
-  ReceiveMessageCommand,
-  SQSClient,
-} from '@aws-sdk/client-sqs';
+import { DeleteMessageCommand, ReceiveMessageCommand } from '@aws-sdk/client-sqs';
 import type { AppEnv } from '../config/env';
 import { APP_ENV } from '../config/config.module';
-import { ReportGenerationOrchestrator, ReportRequest } from './report-generation.orchestrator';
+import { AwsClients } from '../aws/aws-clients';
+import { ReportGenerationOrchestrator, ReportRequest } from './orchestrator';
 
 const LONG_POLL_WAIT_SECONDS = 20;
 
 @Injectable()
 export class ReportRequestsConsumer implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ReportRequestsConsumer.name);
-  private readonly sqs = new SQSClient({});
   private running = false;
   private pollLoop: Promise<void> | null = null;
 
   constructor(
     @Inject(APP_ENV) private readonly env: AppEnv,
+    private readonly aws: AwsClients,
     private readonly orchestrator: ReportGenerationOrchestrator,
   ) {}
 
@@ -43,7 +38,7 @@ export class ReportRequestsConsumer implements OnModuleInit, OnModuleDestroy {
   private async poll(): Promise<void> {
     while (this.running) {
       try {
-        const result = await this.sqs.send(
+        const result = await this.aws.sqs.send(
           new ReceiveMessageCommand({
             QueueUrl: this.env.reportRequestsQueueUrl,
             MaxNumberOfMessages: 1,
@@ -65,7 +60,12 @@ export class ReportRequestsConsumer implements OnModuleInit, OnModuleDestroy {
 
     let request: ReportRequest;
     try {
-      request = JSON.parse(body);
+      const parsed = JSON.parse(body) as { reportId?: string; requestId?: string; campaignId?: string };
+      const reportId = parsed.reportId ?? parsed.requestId;
+      if (!reportId) {
+        throw new Error('missing reportId');
+      }
+      request = { requestId: reportId, campaignId: parsed.campaignId ?? '' };
     } catch {
       this.logger.error(`Discarding malformed message body: ${body}`);
       await this.deleteMessage(receiptHandle);
@@ -91,7 +91,7 @@ export class ReportRequestsConsumer implements OnModuleInit, OnModuleDestroy {
   }
 
   private async deleteMessage(receiptHandle: string): Promise<void> {
-    await this.sqs.send(
+    await this.aws.sqs.send(
       new DeleteMessageCommand({
         QueueUrl: this.env.reportRequestsQueueUrl,
         ReceiptHandle: receiptHandle,

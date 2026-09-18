@@ -297,7 +297,7 @@ module "ecs_backend" {
   environment_variables = {
     ENVIRONMENT               = var.environment
     REPORTS_BUCKET            = module.s3_reports.bucket_id
-    PLATFORM_TOOL_BASE_URL    = var.platform_tool_base_url
+    CONTENTHUB_BASE_URL       = var.contenthub_base_url
     REPORT_REQUESTS_QUEUE_URL = module.sqs_report_requests.queue_url
     REPORT_READY_TOPIC_ARN    = module.sns_report_ready.topic_arn
     GENERATION_STATE_TABLE    = module.dynamodb.table_name
@@ -305,7 +305,7 @@ module "ecs_backend" {
   }
 
   secret_arns = {
-    PLATFORM_TOOL_API_KEY = "${module.secrets.secret_arn}:PLATFORM_TOOL_API_KEY::"
+    CONTENTHUB_API_KEY = "${module.secrets.secret_arn}:CONTENTHUB_API_KEY::"
     # Plain-string secret (not JSON), no :KEY:: suffix. Matches how
     # cht-companion's own ecs-companion module consumes this same secret.
     COMPANION_INTERNAL_SECRET = data.aws_secretsmanager_secret.companion_bff_auth.arn
