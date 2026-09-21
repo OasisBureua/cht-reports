@@ -20,7 +20,7 @@ concurrency:
 env:
   AWS_REGION: us-east-1
   ECR_REGISTRY: 233636046512.dkr.ecr.us-east-1.amazonaws.com
-  ECR_BACKEND_REPO: cht-reports-dev-backend
+  ECR_BACKEND_REPO: cht-reports-dev-service
   ECR_GENERATOR_REPO: cht-reports-dev-generator
   TERRAFORM_VERSION: 1.10.5
   TF_ENV_DIR: infrastructure/terraform/environments/us-east-1
@@ -221,26 +221,31 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Setup Terraform
-        if: needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true'
+        if: needs.changes.outputs.deploy_backend == 'true' || needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true'
         uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
           terraform_wrapper: false
 
       - name: Verify GitHub Environment secrets
-        if: needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true'
+        if: needs.changes.outputs.deploy_backend == 'true' || needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true'
         run: ./scripts/verify-github-env-secrets.sh development
 
       - name: Terraform Init
-        if: needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true'
+        if: needs.changes.outputs.deploy_backend == 'true' || needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true'
         working-directory: ${{ env.TF_ENV_DIR }}
         run: terraform init -reconfigure -backend-config="${{ env.TF_BACKEND_CONFIG }}"
 
       - name: Terraform Plan
-        if: needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true'
+        if: needs.changes.outputs.deploy_backend == 'true' || needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true'
         working-directory: ${{ env.TF_ENV_DIR }}
         run: |
           EXTRA_VARS=()
+          if [ "${{ needs.changes.outputs.deploy_backend }}" = "true" ]; then
+            EXTRA_VARS+=(
+              -var="reports_service_image_uri=${{ env.ECR_REGISTRY }}/${{ env.ECR_BACKEND_REPO }}:${{ steps.meta.outputs.image_tag }}"
+            )
+          fi
           if [ "${{ needs.changes.outputs.deploy_lambda }}" = "true" ]; then
             EXTRA_VARS+=(
               -var="lambda_images={\"generator\":\"${{ env.ECR_REGISTRY }}/${{ env.ECR_GENERATOR_REPO }}:${{ steps.meta.outputs.image_tag }}\"}"
@@ -260,7 +265,7 @@ jobs:
           TF_VAR_contenthub_api_key: ${{ secrets.CONTENTHUB_API_KEY }}
 
       - name: Plan summary
-        if: needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true'
+        if: needs.changes.outputs.deploy_backend == 'true' || needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true'
         working-directory: ${{ env.TF_ENV_DIR }}
         run: |
           echo "## Terraform plan summary" >> "$GITHUB_STEP_SUMMARY"
@@ -279,7 +284,7 @@ jobs:
           fi
 
       - name: Approve Terraform apply
-        if: (needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true') && github.event.inputs.plan_only != 'true'
+        if: (needs.changes.outputs.deploy_backend == 'true' || needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true') && github.event.inputs.plan_only != 'true'
         uses: trstringer/manual-approval@v1
         timeout-minutes: 120
         with:
@@ -293,7 +298,7 @@ jobs:
             Comment **approve** to apply. Comment **deny** to cancel.
 
       - name: Terraform Apply
-        if: (needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true') && github.event.inputs.plan_only != 'true'
+        if: (needs.changes.outputs.deploy_backend == 'true' || needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true') && github.event.inputs.plan_only != 'true'
         working-directory: ${{ env.TF_ENV_DIR }}
         run: terraform apply tfplan
 

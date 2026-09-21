@@ -20,7 +20,7 @@ Docs-only changes under `docs/**` do not trigger deploy.
 
 | Lane | Paths | What runs |
 |------|--------|-----------|
-| Backend | `backend/**` | Tests + image build/push (`cht-reports-dev-backend` / `cht-reports-prod-backend`) |
+| Backend | `backend/**` | Tests + image build/push (`cht-reports-dev-service` / `cht-reports-prod-service`) + Terraform plan/apply (rolls the ECS service to the new image) |
 | Lambda | `lambdas/**` | Tests + image build/push + Terraform image pin |
 | Infra | `infrastructure/**` | Terraform plan/apply |
 
