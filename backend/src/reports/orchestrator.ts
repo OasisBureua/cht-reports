@@ -68,10 +68,10 @@ export class ReportGenerationOrchestrator {
       const content = await this.generateContent(packet);
 
       await this.state.markStatus(requestId, 'rendering');
-      const docxBuffer = await this.reportDoc.renderExecutiveSummary(content);
+      const html = await this.reportDoc.renderExecutiveSummary(content);
 
       await this.state.markStatus(requestId, 'uploading');
-      const s3Key = await this.storage.uploadReport(requestId, docxBuffer);
+      const s3Key = await this.storage.uploadReport(requestId, html);
 
       await this.notifier.notify({ requestId, campaignId: String(campaignId), s3Key });
       await this.state.markComplete(requestId);

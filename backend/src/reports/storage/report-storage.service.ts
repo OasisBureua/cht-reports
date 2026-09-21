@@ -11,15 +11,15 @@ export class ReportStorageService {
     private readonly aws: AwsClients,
   ) {}
 
-  async uploadReport(requestId: string, docxBuffer: Buffer): Promise<string> {
-    const key = `reports/${requestId}.docx`;
+  async uploadReport(requestId: string, html: string): Promise<string> {
+    const key = `reports/${requestId}.html`;
 
     await this.aws.s3.send(
       new PutObjectCommand({
         Bucket: this.env.reportsBucket,
         Key: key,
-        Body: docxBuffer,
-        ContentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        Body: html,
+        ContentType: 'text/html; charset=utf-8',
       }),
     );
 
