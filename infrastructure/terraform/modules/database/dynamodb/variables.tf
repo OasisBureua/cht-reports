@@ -20,3 +20,12 @@ variable "table_name" {
   description = "Report job table name, e.g. cht-dev-report-state."
   type        = string
 }
+
+variable "replicas" {
+  description = "Global table replicas: region plus a KMS key in that region."
+  type = list(object({
+    region      = string
+    kms_key_arn = string
+  }))
+  default = []
+}

@@ -32,13 +32,29 @@ resource "aws_dynamodb_table" "report_generation_state" {
     projection_type = "ALL"
   }
 
+  # Global table: replicas need streams on the primary.
+  stream_enabled   = length(var.replicas) > 0
+  stream_view_type = length(var.replicas) > 0 ? "NEW_AND_OLD_IMAGES" : null
+
+  dynamic "replica" {
+    for_each = var.replicas
+    content {
+      region_name            = replica.value.region
+      kms_key_arn            = replica.value.kms_key_arn
+      point_in_time_recovery = true
+      propagate_tags         = true
+    }
+  }
+
+  deletion_protection_enabled = var.environment == "production"
+
   server_side_encryption {
     enabled     = true
     kms_key_arn = var.kms_key_arn
   }
 
   point_in_time_recovery {
-    enabled = var.environment == "production"
+    enabled = true
   }
 
   tags = {

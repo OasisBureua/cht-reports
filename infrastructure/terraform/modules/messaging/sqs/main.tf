@@ -1,17 +1,17 @@
 resource "aws_sqs_queue" "dlq" {
-  name                       = "${var.resource_prefix}-generate-dlq"
+  name                       = "${var.name}_dlq"
   kms_master_key_id          = var.kms_key_arn
   message_retention_seconds  = 1209600
   visibility_timeout_seconds = var.visibility_timeout_seconds
 
   tags = {
-    Name        = "${var.resource_prefix}-generate-dlq"
+    Name        = "${var.name}_dlq"
     Environment = var.environment
   }
 }
 
-resource "aws_sqs_queue" "generate" {
-  name                       = "${var.resource_prefix}-generate"
+resource "aws_sqs_queue" "queue" {
+  name                       = var.name
   kms_master_key_id          = var.kms_key_arn
   visibility_timeout_seconds = var.visibility_timeout_seconds
   message_retention_seconds  = var.message_retention_seconds
@@ -22,7 +22,7 @@ resource "aws_sqs_queue" "generate" {
   })
 
   tags = {
-    Name        = "${var.resource_prefix}-generate"
+    Name        = var.name
     Environment = var.environment
   }
 }
