@@ -33,16 +33,6 @@ output "reports_bucket" {
   value       = module.s3_reports.bucket_id
 }
 
-output "generate_queue_url" {
-  description = "SQS generate queue URL"
-  value       = module.sqs.queue_url
-}
-
-output "generate_queue_arn" {
-  description = "SQS generate queue ARN"
-  value       = module.sqs.queue_arn
-}
-
 output "alerts_topic_arn" {
   description = "SNS alerts topic"
   value       = module.sns_alerts.topic_arn

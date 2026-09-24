@@ -1,26 +1,21 @@
 # CHT Reports infrastructure
 
-AWS infrastructure for containerized report Lambdas using Terraform.
+AWS infrastructure for the report generation service, using Terraform.
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────┐
-│              EventBridge schedule             │
-└──────────────────────┬───────────────────────┘
-                       ▼
-        ┌──────────────────────────────┐
-        │  SQS generate queue + DLQ    │
-        └──────────────┬───────────────┘
-                       ▼
-        ┌──────────────────────────────┐
-        │  Lambda (container image)    │
-        │  alias: live                 │
-        └──────────────┬───────────────┘
-                       ▼
-        ┌──────────────────────────────┐
-        │  S3 reports bucket (KMS)     │
-        └──────────────────────────────┘
+cht-platform-tool (generate BFF)
+   │  PutItem cht-{env}-report-state   (DynamoDB, global: us-east-1 + us-east-2)
+   │  SendMessage { reportId }
+   ▼
+SQS cht-{env}-report-requests  (+ cht-{env}-report-requests_dlq)
+   ▼
+ECS service cht-reports-{env} (shared platform cluster, Service Connect)
+   │  Content Hub GET /api/campaigns/{id}/report-packet
+   │  cht-companion /generate
+   ▼
+S3 reports bucket (KMS) ──► notify Lambda (CPR-35)
 ```
 
 ## Modules

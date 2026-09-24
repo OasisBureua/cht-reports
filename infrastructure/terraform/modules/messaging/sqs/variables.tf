@@ -1,5 +1,5 @@
-variable "resource_prefix" {
-  description = "Name prefix"
+variable "name" {
+  description = "Queue name, e.g. cht-dev-report-requests. The DLQ is <name>_dlq."
   type        = string
 }
 
@@ -14,7 +14,7 @@ variable "kms_key_arn" {
 }
 
 variable "visibility_timeout_seconds" {
-  description = "Must exceed Lambda timeout"
+  description = "Must exceed the consumer's processing time"
   type        = number
   default     = 360
 }

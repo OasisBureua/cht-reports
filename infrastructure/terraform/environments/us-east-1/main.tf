@@ -30,6 +30,21 @@ provider "aws" {
   }
 }
 
+# Secondary region for the report job table's global replica (DR region).
+provider "aws" {
+  alias  = "us_east_2"
+  region = "us-east-2"
+
+  default_tags {
+    tags = {
+      Project     = var.project
+      Environment = var.environment
+      Region      = "us-east-2"
+      ManagedBy   = "Terraform"
+    }
+  }
+}
+
 data "aws_caller_identity" "current" {}
 
 locals {
@@ -86,15 +101,6 @@ module "s3_reports" {
 # ============================================
 # Messaging
 # ============================================
-module "sqs" {
-  source = "../../modules/messaging/sqs"
-
-  resource_prefix            = local.resource_prefix
-  environment                = var.environment
-  kms_key_arn                = module.kms.sqs_kms_key_arn
-  visibility_timeout_seconds = var.lambda_timeout + 60
-}
-
 module "sns_alerts" {
   source = "../../modules/messaging/sns-alerts"
 
@@ -104,14 +110,12 @@ module "sns_alerts" {
   alarm_notification_emails = var.alarm_notification_emails
 }
 
-# On-demand report requests, separate from the scheduled-batch "generate"
-# queue above. CHT posts here when a user requests a report; the ECS
-# service (not the Lambda) consumes it. Reuses the same sqs module, a
-# distinct resource_prefix avoids colliding on the queue name.
+# On-demand report requests. cht-platform-tool's generate BFF posts
+# { reportId } here; the ECS service (not the Lambda) consumes it.
 module "sqs_report_requests" {
   source = "../../modules/messaging/sqs"
 
-  resource_prefix            = "${local.resource_prefix}-requests"
+  name                       = "cht-${local.env_short}-report-requests"
   environment                = var.environment
   kms_key_arn                = module.kms.sqs_kms_key_arn
   visibility_timeout_seconds = var.report_request_visibility_timeout_seconds
@@ -179,7 +183,6 @@ module "lambda" {
   log_retention_days     = local.log_retention_days
   cloudwatch_kms_key_arn = module.kms.cloudwatch_kms_key_arn
   s3_bucket_arn          = module.s3_reports.bucket_arn
-  sqs_queue_arn          = module.sqs.queue_arn
   secrets_arn            = module.secrets.secret_arn
   kms_key_arns = [
     module.kms.s3_kms_key_arn,
@@ -191,7 +194,6 @@ module "lambda" {
     REPORTS_BUCKET      = module.s3_reports.bucket_id
     SECRETS_ARN         = module.secrets.secret_arn
     CONTENTHUB_BASE_URL = var.contenthub_base_url
-    GENERATE_QUEUE_URL  = module.sqs.queue_url
   }
 }
 
@@ -265,7 +267,53 @@ module "dynamodb" {
   table_name      = "cht-${local.env_short}-report-state"
   kms_key_arn     = module.kms.dynamodb_kms_key_arn
 
+  replicas = [
+    { region = "us-east-2", kms_key_arn = aws_kms_key.dynamodb_replica.arn },
+  ]
+
   platform_tool_role_arns = var.platform_tool_role_arns
+}
+
+# The table's KMS key is single-region, so the us-east-2 replica gets its own
+# key with the same policy shape (platform-tool only via DynamoDB).
+resource "aws_kms_key" "dynamodb_replica" {
+  provider = aws.us_east_2
+
+  description             = "${local.resource_prefix} DynamoDB replica encryption key (us-east-2)"
+  deletion_window_in_days = 30
+  enable_key_rotation     = true
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = concat([
+      {
+        Sid       = "EnableRootAccountPermissions"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root" }
+        Action    = "kms:*"
+        Resource  = "*"
+      },
+      ], length(var.platform_tool_role_arns) == 0 ? [] : [{
+        Sid       = "PlatformToolViaDynamoDB"
+        Effect    = "Allow"
+        Principal = { AWS = var.platform_tool_role_arns }
+        Action    = ["kms:Encrypt", "kms:Decrypt", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:DescribeKey", "kms:CreateGrant"]
+        Resource  = "*"
+        Condition = { StringEquals = { "kms:ViaService" = "dynamodb.us-east-2.amazonaws.com" } }
+    }])
+  })
+
+  tags = {
+    Name        = "${local.resource_prefix}-dynamodb-replica-key"
+    Environment = var.environment
+    Service     = "dynamodb"
+  }
+}
+
+resource "aws_kms_alias" "dynamodb_replica" {
+  provider = aws.us_east_2
+
+  name          = "alias/${local.resource_prefix}-dynamodb"
+  target_key_id = aws_kms_key.dynamodb_replica.key_id
 }
 
 module "iam" {

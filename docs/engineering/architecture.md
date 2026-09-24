@@ -7,7 +7,7 @@ CHT Reports is an on-demand **SQS worker** on ECS Fargate (NestJS). The admin UI
        │
        │  PutItem DDB (queued) + SendMessage { reportId }
        ▼
-  SQS  *-requests-generate  (+ DLQ)
+  SQS  cht-{env}-report-requests  (+ _dlq)
        │
        ▼
   ECS cht-reports worker
