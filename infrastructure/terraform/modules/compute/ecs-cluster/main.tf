@@ -7,7 +7,7 @@
 #
 # Content Hub is not on this cluster (contenthub-cluster / contenthub-dev-cluster,
 # no shared VPC or Cloud Map). cht-reports reaches it over HTTPS:
-# GET /api/admin/campaigns/{id}/report-packet with CONTENTHUB_API_KEY.
+# GET /api/campaigns/{id}/report-packet with CONTENTHUB_API_KEY.
 # cht-reports has no Aurora role. Platform-tool export is Hub ingest, not
 # this worker.
 

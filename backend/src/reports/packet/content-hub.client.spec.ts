@@ -1,5 +1,17 @@
-import { ContentHubClient, ContentHubClientError } from './content-hub.client';
+import { ContentHubClient, ContentHubClientError, contentHubApiBase } from './content-hub.client';
 import { testEnv } from '../../config/test-env';
+
+describe('contentHubApiBase', () => {
+  it.each([
+    'https://hub.test',
+    'https://hub.test/',
+    'https://hub.test/api',
+    'https://hub.test/api/public',
+    'https://hub.test/api/admin/',
+  ])('normalizes %s to the /api root', (url) => {
+    expect(contentHubApiBase(url)).toBe('https://hub.test/api');
+  });
+});
 
 describe('ContentHubClient', () => {
   const originalFetch = global.fetch;
@@ -32,7 +44,8 @@ describe('ContentHubClient', () => {
 
     expect(packet.campaignId).toBe(9);
     const called = mockFetch.mock.calls[0][0] as string;
-    expect(called).toContain('/api/admin/campaigns/9/report-packet');
+    expect(called).toContain('https://hub.test/api/campaigns/9/report-packet');
+    expect(called).not.toContain('/api/admin');
     expect(called).not.toContain('/api/public');
     expect(called).toContain('windowStart=2026-01-01');
     expect(called).toContain('sources=linkedin');
@@ -40,7 +53,7 @@ describe('ContentHubClient', () => {
     expect(mockFetch.mock.calls[0][1].headers['X-Request-Id']).toEqual(expect.any(String));
   });
 
-  it('rewrites /api/public CONTENTHUB_BASE_URL onto the admin packet path', async () => {
+  it('rewrites an /api/public CONTENTHUB_BASE_URL onto the packet path', async () => {
     const mockFetch = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ campaignId: 1, sessions: [], surveyResponses: [], platformSlices: [], inputCompleteness: {} }),
@@ -54,7 +67,7 @@ describe('ContentHubClient', () => {
     await client.fetchReportPacket({ campaignId: 1 });
 
     expect(mockFetch.mock.calls[0][0]).toBe(
-      'https://devhub.communityhealth.media/api/admin/campaigns/1/report-packet',
+      'https://devhub.communityhealth.media/api/campaigns/1/report-packet',
     );
   });
 

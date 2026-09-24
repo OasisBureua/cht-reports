@@ -37,7 +37,6 @@ locals {
   resource_prefix    = "${var.project}-${local.env_short}"
   log_retention_days = contains(["prod", "production"], var.environment) ? 365 : 7
   ecr_repository_names = [
-    "cht-reports-${local.env_short}-backend",
     "cht-reports-${local.env_short}-generator",
     "cht-reports-${local.env_short}-service",
   ]
@@ -53,6 +52,8 @@ module "kms" {
   environment    = var.environment
   aws_region     = "us-east-1"
   aws_account_id = data.aws_caller_identity.current.account_id
+
+  platform_tool_role_arns = var.platform_tool_role_arns
 }
 
 # ============================================
@@ -62,10 +63,6 @@ module "ecr" {
   source = "../../modules/compute/ecr"
 
   repository_names = local.ecr_repository_names
-  tags = {
-    Environment = var.environment
-    Project     = var.project
-  }
 }
 
 module "ecr_lifecycle" {
@@ -118,6 +115,25 @@ module "sqs_report_requests" {
   environment                = var.environment
   kms_key_arn                = module.kms.sqs_kms_key_arn
   visibility_timeout_seconds = var.report_request_visibility_timeout_seconds
+}
+
+# cht-platform-tool's generate BFF (CPR-30) enqueues { reportId } here.
+resource "aws_sqs_queue_policy" "report_requests_platform_tool" {
+  count = length(var.platform_tool_role_arns) > 0 ? 1 : 0
+
+  queue_url = module.sqs_report_requests.queue_url
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "PlatformToolSendReportRequests"
+        Effect    = "Allow"
+        Principal = { AWS = var.platform_tool_role_arns }
+        Action    = ["sqs:SendMessage", "sqs:GetQueueUrl", "sqs:GetQueueAttributes"]
+        Resource  = module.sqs_report_requests.queue_arn
+      },
+    ]
+  })
 }
 
 # Fired by the ECS service once a report is generated and uploaded to S3,
@@ -177,16 +193,6 @@ module "lambda" {
     CONTENTHUB_BASE_URL = var.contenthub_base_url
     GENERATE_QUEUE_URL  = module.sqs.queue_url
   }
-}
-
-# ============================================
-# Event source: SQS → generator:live
-# ============================================
-resource "aws_lambda_event_source_mapping" "generate" {
-  event_source_arn = module.sqs.queue_arn
-  function_name    = module.lambda["generator"].live_alias_arn
-  batch_size       = 1
-  enabled          = true
 }
 
 # ============================================
@@ -256,7 +262,10 @@ module "dynamodb" {
 
   resource_prefix = local.resource_prefix
   environment     = var.environment
+  table_name      = "cht-${local.env_short}-report-state"
   kms_key_arn     = module.kms.dynamodb_kms_key_arn
+
+  platform_tool_role_arns = var.platform_tool_role_arns
 }
 
 module "iam" {
@@ -284,6 +293,8 @@ module "ecs_backend" {
   resource_prefix = local.resource_prefix
   environment     = var.environment
   image_uri       = var.reports_service_image_uri
+
+  log_retention_days = local.log_retention_days
 
   execution_role_arn = module.iam.execution_role_arn
   task_role_arn      = module.iam.task_role_arn

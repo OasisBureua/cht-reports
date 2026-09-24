@@ -32,15 +32,15 @@ variable "generate_schedule_expression" {
 }
 
 variable "enable_generate_schedule" {
-  description = "Enable the EventBridge generate rule"
+  description = "Enable the EventBridge generate rule. Off: the ECS service generates reports on demand (CPR-34)."
   type        = bool
-  default     = true
+  default     = false
 }
 
 # Origin or /api/public URL. The Nest worker rewrites to /api/admin for
 # GET .../campaigns/{id}/report-packet.
 variable "contenthub_base_url" {
-  description = "Content Hub API base URL (non-secret). Worker rewrites /api/public → /api/admin."
+  description = "Content Hub API base URL (non-secret). Worker calls <origin>/api/campaigns/{id}/report-packet."
   type        = string
   default     = ""
 }
@@ -126,4 +126,10 @@ variable "companion_bff_auth_secret_name" {
 variable "companion_kms_alias" {
   description = "cht-companion's shared KMS key alias (alias/cht-dev-companion / alias/cht-companion)."
   type        = string
+}
+
+variable "platform_tool_role_arns" {
+  description = "cht-platform-tool backend task role ARNs allowed to enqueue report requests and write report job items (CPR-34)."
+  type        = list(string)
+  default     = []
 }

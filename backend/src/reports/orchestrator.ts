@@ -41,19 +41,19 @@ export class ReportGenerationOrchestrator {
   async handle(request: ReportRequest): Promise<void> {
     const { requestId } = request;
 
-    let existing = await this.state.get(requestId);
+    let existing = await this.state.get(requestId, request.campaignId || undefined);
     if (!existing) {
-      existing = await this.state.initialize(requestId);
+      if (!request.campaignId) {
+        throw new Error(`Request ${requestId} has no state row and no campaignId; cannot start`);
+      }
+      existing = await this.state.initialize(requestId, request.campaignId);
     }
     if (existing.status === 'complete') {
       this.logger.log(`Request ${requestId} already complete, skipping (idempotent redelivery)`);
       return;
     }
 
-    const campaignId = existing.campaignId ?? request.campaignId;
-    if (!campaignId) {
-      throw new Error(`Request ${requestId} has no campaignId; cannot fetch Content Hub packet`);
-    }
+    const campaignId = existing.campaignId;
 
     try {
       await this.state.beginAttempt(requestId, 'pulling_data');
