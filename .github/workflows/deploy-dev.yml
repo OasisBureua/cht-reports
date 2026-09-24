@@ -227,6 +227,9 @@ jobs:
         with:
           context: ./lambdas/generator
           push: true
+          # Lambda rejects OCI image indexes; attestations would produce one.
+          provenance: false
+          sbom: false
           tags: |
             ${{ env.ECR_REGISTRY }}/${{ env.ECR_GENERATOR_REPO }}:${{ steps.meta.outputs.image_tag }}
             ${{ env.ECR_REGISTRY }}/${{ env.ECR_GENERATOR_REPO }}:dev-latest
