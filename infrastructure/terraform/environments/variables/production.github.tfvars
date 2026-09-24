@@ -15,7 +15,7 @@ lambda_timeout     = 300
 lambda_memory_size = 1024
 
 generate_schedule_expression = "cron(0 6 * * ? *)"
-enable_generate_schedule     = true
+enable_generate_schedule     = false
 
 contenthub_base_url = "https://contenthub.communityhealth.media/api/public"
 
@@ -38,3 +38,7 @@ platform_backend_security_group_name = "cht-platform-backend-sg"
 service_connect_namespace_name       = "cht.local"
 companion_bff_auth_secret_name       = "cht-companion-bff-auth"
 companion_kms_alias                  = "alias/cht-companion"
+
+# cht-platform-tool backend task role: enqueues report requests and writes
+# report job items (CPR-34 / CPR-30).
+platform_tool_role_arns = ["arn:aws:iam::233636046512:role/cht-platform-ecs-task"]

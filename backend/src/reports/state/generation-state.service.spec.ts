@@ -26,16 +26,15 @@ describe('GenerationStateService', () => {
   });
 
   it('increments attempt count on each beginAttempt call', async () => {
-    ddbMock.on(GetCommand).resolves({ Item: { request_id: 'req-1', attempt_count: 2, status: 'generating' } });
+    ddbMock.on(GetCommand).resolves({ Item: { report_id: 'req-1', attempt_count: 2, status: 'generating' } });
     ddbMock.on(UpdateCommand).resolves({
       Attributes: {
-        request_id: 'req-1',
+        report_id: 'req-1',
         status: 'pulling_data',
         attempt_count: 3,
         last_error: null,
         created_at: '2026-01-01T00:00:00.000Z',
         updated_at: '2026-01-01T00:00:01.000Z',
-        expires_at: 0,
       },
     });
 
@@ -45,16 +44,15 @@ describe('GenerationStateService', () => {
   });
 
   it('throws and marks failed once max attempts is exceeded', async () => {
-    ddbMock.on(GetCommand).resolves({ Item: { request_id: 'req-1', attempt_count: 5, status: 'generating' } });
+    ddbMock.on(GetCommand).resolves({ Item: { report_id: 'req-1', attempt_count: 5, status: 'generating' } });
     ddbMock.on(UpdateCommand).resolves({
       Attributes: {
-        request_id: 'req-1',
+        report_id: 'req-1',
         status: 'failed',
         attempt_count: 5,
         last_error: 'Exceeded max attempts (5)',
         created_at: '2026-01-01T00:00:00.000Z',
         updated_at: '2026-01-01T00:00:01.000Z',
-        expires_at: 0,
       },
     });
 
@@ -70,13 +68,12 @@ describe('GenerationStateService', () => {
   it('does not retry a request already marked complete (idempotent redelivery)', async () => {
     ddbMock.on(GetCommand).resolves({
       Item: {
-        request_id: 'req-1',
+        report_id: 'req-1',
         status: 'complete',
         attempt_count: 1,
         last_error: null,
         created_at: '2026-01-01T00:00:00.000Z',
         updated_at: '2026-01-01T00:00:01.000Z',
-        expires_at: 0,
       },
     });
 

@@ -32,7 +32,7 @@ cht-reports has **no public or private ALB**. HTTP is health only (`/health`), f
 
 cht-reports does **not** query Aurora or cht-platform-tool. Generate-time data is:
 
-`GET /api/admin/campaigns/{campaignId}/report-packet?windowStart=&windowEnd=&sources=`
+`GET /api/campaigns/{campaignId}/report-packet?windowStart=&windowEnd=&sources=`
 
 Auth: `X-API-Key` (`CONTENTHUB_API_KEY`) + `X-Request-Id`. `CONTENTHUB_BASE_URL` may be origin, `/api/public`, or `/api/admin`; the client rewrites to the admin API.
 
@@ -42,7 +42,7 @@ Response (camelCase): campaign identity, `hubspotRawData`, windowed `platformSli
 
 - NestJS SQS consumer and orchestrator
 - DynamoDB generation-state **updates** (CHT PutItem)
-- Packet fetch from Content Hub `GET /api/admin/campaigns/{id}/report-packet`
+- Packet fetch from Content Hub `GET /api/campaigns/{id}/report-packet`
 - Generate-time transcript NLG cleaning (copy only)
 - HTML/PDF render and S3 artifact upload
 - S3 → SES notify Lambda

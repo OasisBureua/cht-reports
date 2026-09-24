@@ -183,6 +183,19 @@ jobs:
         if: needs.changes.outputs.deploy_backend == 'true' || needs.changes.outputs.deploy_lambda == 'true'
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Ensure ECR repositories exist
+        if: needs.changes.outputs.deploy_backend == 'true' || needs.changes.outputs.deploy_lambda == 'true'
+        run: |
+          for repo in "${{ env.ECR_BACKEND_REPO }}" "${{ env.ECR_GENERATOR_REPO }}"; do
+            if ! aws ecr describe-repositories --repository-names "$repo" --region "$AWS_REGION" >/dev/null 2>&1; then
+              echo "Creating ECR repository: $repo"
+              aws ecr create-repository --repository-name "$repo" --region "$AWS_REGION" \
+                --image-scanning-configuration scanOnPush=true \
+                --encryption-configuration encryptionType=AES256 \
+                --tags Key=Project,Value=cht-reports Key=Environment,Value=dev
+            fi
+          done
+
       - name: Generate image tag
         if: needs.changes.outputs.deploy_backend == 'true' || needs.changes.outputs.deploy_lambda == 'true'
         id: meta

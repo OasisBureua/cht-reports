@@ -40,6 +40,7 @@ resource "aws_kms_key" "sqs" {
   description             = "${local.prefix} SQS encryption key"
   deletion_window_in_days = var.deletion_window_in_days
   enable_key_rotation     = true
+  policy                  = local.sqs_key_policy
 
   tags = {
     Name        = "${local.prefix}-sqs-key"
@@ -110,6 +111,7 @@ resource "aws_kms_key" "dynamodb" {
   description             = "${local.prefix} DynamoDB encryption key"
   deletion_window_in_days = var.deletion_window_in_days
   enable_key_rotation     = true
+  policy                  = local.dynamodb_key_policy
 
   tags = {
     Name        = "${local.prefix}-dynamodb-key"
@@ -177,4 +179,43 @@ resource "aws_kms_key" "sns" {
 resource "aws_kms_alias" "sns" {
   name          = "alias/${local.prefix}-sns"
   target_key_id = aws_kms_key.sns.key_id
+}
+
+# SQS and DynamoDB keys: the default account-root statement (IAM policies
+# keep working for this repo's own roles), plus cht-platform-tool's task
+# role, which only gets the key through SQS / DynamoDB (kms:ViaService).
+# Without this, that role's SendMessage / PutItem calls fail on KMS even
+# though the queue and table policies allow them.
+locals {
+  root_key_statement = {
+    Sid       = "EnableRootAccountPermissions"
+    Effect    = "Allow"
+    Principal = { AWS = "arn:aws:iam::${var.aws_account_id}:root" }
+    Action    = "kms:*"
+    Resource  = "*"
+  }
+
+  sqs_key_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = concat([local.root_key_statement], length(var.platform_tool_role_arns) == 0 ? [] : [{
+      Sid       = "PlatformToolViaSqs"
+      Effect    = "Allow"
+      Principal = { AWS = var.platform_tool_role_arns }
+      Action    = ["kms:GenerateDataKey", "kms:Decrypt"]
+      Resource  = "*"
+      Condition = { StringEquals = { "kms:ViaService" = "sqs.${var.aws_region}.amazonaws.com" } }
+    }])
+  })
+
+  dynamodb_key_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = concat([local.root_key_statement], length(var.platform_tool_role_arns) == 0 ? [] : [{
+      Sid       = "PlatformToolViaDynamoDB"
+      Effect    = "Allow"
+      Principal = { AWS = var.platform_tool_role_arns }
+      Action    = ["kms:Encrypt", "kms:Decrypt", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:DescribeKey", "kms:CreateGrant"]
+      Resource  = "*"
+      Condition = { StringEquals = { "kms:ViaService" = "dynamodb.${var.aws_region}.amazonaws.com" } }
+    }])
+  })
 }

@@ -57,3 +57,19 @@ output "generate_schedule_rule" {
   description = "EventBridge generate rule name"
   value       = module.generate_schedule.rule_name
 }
+
+# What cht-platform-tool's generate BFF (CPR-30) needs.
+output "report_requests_queue_url" {
+  description = "SQS queue the generate BFF sends { reportId } to"
+  value       = module.sqs_report_requests.queue_url
+}
+
+output "report_jobs_table_name" {
+  description = "DynamoDB report job table (hash key report_id)"
+  value       = module.dynamodb.table_name
+}
+
+output "report_jobs_campaign_index" {
+  description = "GSI for listing a campaign's reports (campaign_id + created_at)"
+  value       = module.dynamodb.campaign_index_name
+}

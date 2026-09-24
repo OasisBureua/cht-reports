@@ -31,10 +31,7 @@ export interface GenerationState {
   lastError: string | null;
   createdAt: string;
   updatedAt: string;
-  expiresAt: number;
 }
-
-const STATE_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
 
 @Injectable()
 export class GenerationStateService {
@@ -49,7 +46,7 @@ export class GenerationStateService {
     const result = await this.aws.dynamodb.send(
       new GetCommand({
         TableName: this.env.generationStateTable,
-        Key: { request_id: requestId },
+        Key: { report_id: requestId },
       }),
     );
     if (!result.Item) return null;
@@ -69,14 +66,13 @@ export class GenerationStateService {
       lastError: null,
       createdAt: now,
       updatedAt: now,
-      expiresAt: Math.floor(Date.now() / 1000) + STATE_TTL_SECONDS,
     };
 
     await this.aws.dynamodb.send(
       new PutCommand({
         TableName: this.env.generationStateTable,
         Item: this.toItem(state),
-        ConditionExpression: 'attribute_not_exists(request_id)',
+        ConditionExpression: 'attribute_not_exists(report_id)',
       }),
     );
 
@@ -140,7 +136,7 @@ export class GenerationStateService {
     const result = await this.aws.dynamodb.send(
       new UpdateCommand({
         TableName: this.env.generationStateTable,
-        Key: { request_id: requestId },
+        Key: { report_id: requestId },
         UpdateExpression: `SET ${sets.join(', ')}`,
         ExpressionAttributeNames: names,
         ExpressionAttributeValues: values,
@@ -153,8 +149,9 @@ export class GenerationStateService {
 
   private toItem(state: GenerationState): Record<string, unknown> {
     return {
-      request_id: state.requestId,
-      campaign_id: state.campaignId,
+      report_id: state.requestId,
+      // campaign_id is the GSI hash key, which DynamoDB rejects as NULL.
+      ...(state.campaignId ? { campaign_id: state.campaignId } : {}),
       sources: state.sources,
       window_start: state.windowStart,
       window_end: state.windowEnd,
@@ -163,13 +160,12 @@ export class GenerationStateService {
       last_error: state.lastError,
       created_at: state.createdAt,
       updated_at: state.updatedAt,
-      expires_at: state.expiresAt,
     };
   }
 
   private fromItem(item: Record<string, unknown>): GenerationState {
     return {
-      requestId: item.request_id as string,
+      requestId: item.report_id as string,
       campaignId: (item.campaign_id as string) ?? null,
       sources: (item.sources as string[]) ?? [],
       windowStart: (item.window_start as string) ?? null,
@@ -179,7 +175,6 @@ export class GenerationStateService {
       lastError: (item.last_error as string) ?? null,
       createdAt: item.created_at as string,
       updatedAt: item.updated_at as string,
-      expiresAt: item.expires_at as number,
     };
   }
 }

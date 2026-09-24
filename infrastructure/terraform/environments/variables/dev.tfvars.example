@@ -16,7 +16,7 @@ lambda_timeout     = 300
 lambda_memory_size = 1024
 
 generate_schedule_expression = "cron(0 6 * * ? *)"
-enable_generate_schedule     = true
+enable_generate_schedule     = false
 
 contenthub_base_url = "https://devhub.communityhealth.media/api/public"
 contenthub_api_key  = ""

@@ -94,3 +94,9 @@ variable "secret_arns" {
   type        = map(string)
   default     = {}
 }
+
+variable "log_retention_days" {
+  description = "CloudWatch retention for the service's /ecs/<prefix> log group."
+  type        = number
+  default     = 7
+}

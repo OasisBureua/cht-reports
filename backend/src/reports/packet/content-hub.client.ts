@@ -2,8 +2,8 @@
  * Fetch the generate-time input packet from Content Hub.
  * Hub owns warehouse SQL; this client is HTTPS + X-API-Key only.
  *
- * CONTENTHUB_BASE_URL may be origin, `/api/public`, or `/api/admin`.
- * Packet lives on the admin API (same rewrite CHT uses).
+ * CONTENTHUB_BASE_URL may be origin, `/api`, `/api/public`, or `/api/admin`.
+ * The packet route is `/api/campaigns/{id}/report-packet`, outside both.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -14,10 +14,9 @@ import type { FetchReportPacketInput, ReportInputPacket } from './report-packet.
 
 export class ContentHubClientError extends Error {}
 
-export function contentHubAdminBase(url: string): string {
-  const trimmed = url.replace(/\/$/, '');
-  const asAdmin = trimmed.replace(/\/api\/public\/?$/, '/api/admin');
-  return asAdmin.endsWith('/api/admin') ? asAdmin : `${asAdmin}/api/admin`;
+export function contentHubApiBase(url: string): string {
+  const origin = url.replace(/\/$/, '').replace(/\/api(\/(public|admin))?$/, '');
+  return `${origin}/api`;
 }
 
 @Injectable()
@@ -34,7 +33,7 @@ export class ContentHubClient {
       params.append('sources', source);
     }
     const qs = params.toString();
-    const url = `${contentHubAdminBase(this.env.contentHubBaseUrl)}/campaigns/${input.campaignId}/report-packet${qs ? `?${qs}` : ''}`;
+    const url = `${contentHubApiBase(this.env.contentHubBaseUrl)}/campaigns/${input.campaignId}/report-packet${qs ? `?${qs}` : ''}`;
 
     const response = await fetch(url, {
       method: 'GET',

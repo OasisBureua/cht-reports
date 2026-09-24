@@ -138,6 +138,29 @@
         "arn:aws:logs:us-east-1:233636046512:log-group:/aws/lambda/cht-reports-dev*",
         "arn:aws:logs:us-east-1:233636046512:log-group:/ecs/cht-reports-dev*"
       ]
+    },
+    {
+      "Sid": "DeployDynamoDBDev",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:*"
+      ],
+      "Resource": [
+        "arn:aws:dynamodb:us-east-1:233636046512:table/cht-reports-dev-*",
+        "arn:aws:dynamodb:us-east-1:233636046512:table/cht-reports-dev-*/index/*"
+      ]
+    },
+    {
+      "Sid": "ServiceConnectNamespaceRead",
+      "Effect": "Allow",
+      "Action": [
+        "servicediscovery:GetNamespace",
+        "servicediscovery:ListNamespaces",
+        "servicediscovery:GetService",
+        "servicediscovery:ListServices",
+        "servicediscovery:ListTagsForResource"
+      ],
+      "Resource": "*"
     }
   ]
 }
