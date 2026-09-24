@@ -1,7 +1,7 @@
 import { mockClient } from 'aws-sdk-client-mock';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import { GenerationStateService } from './generation-state.service';
+import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { GenerationStateService, REPORT_ID_INDEX } from './generation-state.service';
 import { AwsClients } from '../../aws/aws-clients';
 import { testEnv } from '../../config/test-env';
 
@@ -19,14 +19,16 @@ describe('GenerationStateService', () => {
 
   it('initializes state with attempt_count 0', async () => {
     ddbMock.on(PutCommand).resolves({});
-    const state = await service().initialize('req-1');
+    const state = await service().initialize('req-1', '9');
 
     expect(state.attemptCount).toBe(0);
     expect(state.status).toBe('queued');
+    const item = ddbMock.commandCalls(PutCommand)[0].args[0].input.Item;
+    expect(item).toMatchObject({ campaign_id: '9', report_id: 'req-1' });
   });
 
   it('increments attempt count on each beginAttempt call', async () => {
-    ddbMock.on(GetCommand).resolves({ Item: { report_id: 'req-1', attempt_count: 2, status: 'generating' } });
+    ddbMock.on(QueryCommand).resolves({ Items: [{ campaign_id: '9', report_id: 'req-1', attempt_count: 2, status: 'generating' }] });
     ddbMock.on(UpdateCommand).resolves({
       Attributes: {
         report_id: 'req-1',
@@ -41,10 +43,12 @@ describe('GenerationStateService', () => {
     const state = await service().beginAttempt('req-1', 'pulling_data');
 
     expect(state.attemptCount).toBe(3);
+    const update = ddbMock.commandCalls(UpdateCommand)[0].args[0].input;
+    expect(update.Key).toEqual({ campaign_id: '9', report_id: 'req-1' });
   });
 
   it('throws and marks failed once max attempts is exceeded', async () => {
-    ddbMock.on(GetCommand).resolves({ Item: { report_id: 'req-1', attempt_count: 5, status: 'generating' } });
+    ddbMock.on(QueryCommand).resolves({ Items: [{ campaign_id: '9', report_id: 'req-1', attempt_count: 5, status: 'generating' }] });
     ddbMock.on(UpdateCommand).resolves({
       Attributes: {
         report_id: 'req-1',
@@ -68,6 +72,7 @@ describe('GenerationStateService', () => {
   it('does not retry a request already marked complete (idempotent redelivery)', async () => {
     ddbMock.on(GetCommand).resolves({
       Item: {
+        campaign_id: '9',
         report_id: 'req-1',
         status: 'complete',
         attempt_count: 1,
@@ -77,8 +82,26 @@ describe('GenerationStateService', () => {
       },
     });
 
-    const state = await service().get('req-1');
+    const state = await service().get('req-1', '9');
 
     expect(state?.status).toBe('complete');
+    const get = ddbMock.commandCalls(GetCommand)[0].args[0].input;
+    expect(get.Key).toEqual({ campaign_id: '9', report_id: 'req-1' });
+    expect(get.ConsistentRead).toBe(true);
+  });
+
+  it('looks a report up by id alone through the report_id index', async () => {
+    ddbMock.on(QueryCommand).resolves({ Items: [{ campaign_id: '9', report_id: 'req-1', status: 'queued', attempt_count: 0 }] });
+
+    const state = await service().get('req-1');
+
+    expect(state?.campaignId).toBe('9');
+    const query = ddbMock.commandCalls(QueryCommand)[0].args[0].input;
+    expect(query.IndexName).toBe(REPORT_ID_INDEX);
+  });
+
+  it('returns null when the report has no row', async () => {
+    ddbMock.on(QueryCommand).resolves({ Items: [] });
+    expect(await service().get('missing')).toBeNull();
   });
 });

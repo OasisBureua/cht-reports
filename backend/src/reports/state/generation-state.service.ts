@@ -3,10 +3,13 @@
  * attempts so a failing pipeline step doesn't loop forever. Backed by
  * DynamoDB, not the reports.* Postgres schema. This is orchestration
  * bookkeeping; CHT PutItem's the row, cht-reports UpdateItem's in place.
+ *
+ * Key: campaign_id (partition) + report_id (sort). Looking a report up by
+ * id alone goes through the report_id GSI.
  */
 
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import type { AppEnv } from '../../config/env';
 import { APP_ENV } from '../../config/config.module';
 import { AwsClients } from '../../aws/aws-clients';
@@ -20,9 +23,11 @@ export type GenerationStatus =
   | 'complete'
   | 'failed';
 
+export const REPORT_ID_INDEX = 'report_id-index';
+
 export interface GenerationState {
   requestId: string;
-  campaignId: string | null;
+  campaignId: string;
   sources: string[];
   windowStart: string | null;
   windowEnd: string | null;
@@ -42,22 +47,40 @@ export class GenerationStateService {
     private readonly aws: AwsClients,
   ) {}
 
-  async get(requestId: string): Promise<GenerationState | null> {
+  /**
+   * With a campaignId this is a consistent GetItem on the full key. Without
+   * one it queries the report_id GSI, which is eventually consistent.
+   */
+  async get(requestId: string, campaignId?: string): Promise<GenerationState | null> {
+    if (campaignId) {
+      const result = await this.aws.dynamodb.send(
+        new GetCommand({
+          TableName: this.env.generationStateTable,
+          Key: { campaign_id: campaignId, report_id: requestId },
+          ConsistentRead: true,
+        }),
+      );
+      return result.Item ? this.fromItem(result.Item) : null;
+    }
+
     const result = await this.aws.dynamodb.send(
-      new GetCommand({
+      new QueryCommand({
         TableName: this.env.generationStateTable,
-        Key: { report_id: requestId },
+        IndexName: REPORT_ID_INDEX,
+        KeyConditionExpression: 'report_id = :report_id',
+        ExpressionAttributeValues: { ':report_id': requestId },
+        Limit: 1,
       }),
     );
-    if (!result.Item) return null;
-    return this.fromItem(result.Item);
+    const item = result.Items?.[0];
+    return item ? this.fromItem(item) : null;
   }
 
-  async initialize(requestId: string): Promise<GenerationState> {
+  async initialize(requestId: string, campaignId: string): Promise<GenerationState> {
     const now = new Date().toISOString();
     const state: GenerationState = {
       requestId,
-      campaignId: null,
+      campaignId,
       sources: [],
       windowStart: null,
       windowEnd: null,
@@ -80,8 +103,8 @@ export class GenerationStateService {
   }
 
   async beginAttempt(requestId: string, status: GenerationStatus): Promise<GenerationState> {
-    const current = await this.get(requestId);
-    const attemptCount = (current?.attemptCount ?? 0) + 1;
+    const current = await this.require(requestId);
+    const attemptCount = current.attemptCount + 1;
 
     if (attemptCount > this.env.maxGenerationAttempts) {
       this.logger.warn(
@@ -93,23 +116,29 @@ export class GenerationStateService {
       );
     }
 
-    return this.update(requestId, { status, attemptCount, lastError: null });
+    return this.update(current, { status, attemptCount, lastError: null });
   }
 
   async markStatus(requestId: string, status: GenerationStatus): Promise<GenerationState> {
-    return this.update(requestId, { status });
+    return this.update(await this.require(requestId), { status });
   }
 
   async markFailed(requestId: string, error: string): Promise<GenerationState> {
-    return this.update(requestId, { status: 'failed', lastError: error });
+    return this.update(await this.require(requestId), { status: 'failed', lastError: error });
   }
 
   async markComplete(requestId: string): Promise<GenerationState> {
-    return this.update(requestId, { status: 'complete', lastError: null });
+    return this.update(await this.require(requestId), { status: 'complete', lastError: null });
+  }
+
+  private async require(requestId: string): Promise<GenerationState> {
+    const state = await this.get(requestId);
+    if (!state) throw new Error(`Report ${requestId} has no generation state row`);
+    return state;
   }
 
   private async update(
-    requestId: string,
+    current: GenerationState,
     patch: Partial<Pick<GenerationState, 'status' | 'attemptCount' | 'lastError'>>,
   ): Promise<GenerationState> {
     const now = new Date().toISOString();
@@ -136,7 +165,7 @@ export class GenerationStateService {
     const result = await this.aws.dynamodb.send(
       new UpdateCommand({
         TableName: this.env.generationStateTable,
-        Key: { report_id: requestId },
+        Key: { campaign_id: current.campaignId, report_id: current.requestId },
         UpdateExpression: `SET ${sets.join(', ')}`,
         ExpressionAttributeNames: names,
         ExpressionAttributeValues: values,
@@ -149,9 +178,8 @@ export class GenerationStateService {
 
   private toItem(state: GenerationState): Record<string, unknown> {
     return {
+      campaign_id: state.campaignId,
       report_id: state.requestId,
-      // campaign_id is the GSI hash key, which DynamoDB rejects as NULL.
-      ...(state.campaignId ? { campaign_id: state.campaignId } : {}),
       sources: state.sources,
       window_start: state.windowStart,
       window_end: state.windowEnd,
@@ -166,7 +194,7 @@ export class GenerationStateService {
   private fromItem(item: Record<string, unknown>): GenerationState {
     return {
       requestId: item.report_id as string,
-      campaignId: (item.campaign_id as string) ?? null,
+      campaignId: item.campaign_id as string,
       sources: (item.sources as string[]) ?? [],
       windowStart: (item.window_start as string) ?? null,
       windowEnd: (item.window_end as string) ?? null,

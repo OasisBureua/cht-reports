@@ -15,3 +15,8 @@ variable "platform_tool_role_arns" {
   type        = list(string)
   default     = []
 }
+
+variable "table_name" {
+  description = "Report job table name, e.g. cht-dev-report-state."
+  type        = string
+}

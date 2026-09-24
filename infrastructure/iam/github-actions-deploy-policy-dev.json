@@ -146,8 +146,8 @@
         "dynamodb:*"
       ],
       "Resource": [
-        "arn:aws:dynamodb:us-east-1:233636046512:table/cht-reports-dev-*",
-        "arn:aws:dynamodb:us-east-1:233636046512:table/cht-reports-dev-*/index/*"
+        "arn:aws:dynamodb:us-east-1:233636046512:table/cht-dev-report-state",
+        "arn:aws:dynamodb:us-east-1:233636046512:table/cht-dev-report-state/index/*"
       ]
     },
     {

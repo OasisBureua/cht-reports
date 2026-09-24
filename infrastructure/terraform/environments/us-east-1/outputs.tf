@@ -65,11 +65,11 @@ output "report_requests_queue_url" {
 }
 
 output "report_jobs_table_name" {
-  description = "DynamoDB report job table (hash key report_id)"
+  description = "DynamoDB report job table (campaign_id + report_id)"
   value       = module.dynamodb.table_name
 }
 
-output "report_jobs_campaign_index" {
-  description = "GSI for listing a campaign's reports (campaign_id + created_at)"
-  value       = module.dynamodb.campaign_index_name
+output "report_jobs_report_index" {
+  description = "GSI for looking a report up by report_id alone"
+  value       = module.dynamodb.report_index_name
 }

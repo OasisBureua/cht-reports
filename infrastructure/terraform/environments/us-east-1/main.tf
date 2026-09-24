@@ -262,6 +262,7 @@ module "dynamodb" {
 
   resource_prefix = local.resource_prefix
   environment     = var.environment
+  table_name      = "cht-${local.env_short}-report-state"
   kms_key_arn     = module.kms.dynamodb_kms_key_arn
 
   platform_tool_role_arns = var.platform_tool_role_arns

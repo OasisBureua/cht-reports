@@ -3,20 +3,18 @@
 # the item, takes the per-campaign lock, and lists by campaign; the
 # cht-reports worker only updates the item as the report progresses.
 #
-# Items:
-#   report_id = <reportId>                         one per report
-#   report_id = LOCK#<campaignId>#<templateType>   generate lock
-# Separate from the reports.* Postgres schema on Content Hub's Aurora.
+# Keyed by campaign so every repo can find a campaign's reports:
+#   campaign_id = <campaignId>, report_id = <reportId>              a report
+#   campaign_id = <campaignId>, report_id = LOCK#<templateType>     generate lock
+# Lookup by reportId alone (GET /api/reports/:id, the SQS worker) uses the
+# report_id GSI. Separate from the reports.* Postgres schema on Content
+# Hub's Aurora.
 
 resource "aws_dynamodb_table" "report_generation_state" {
-  name         = "${var.resource_prefix}-generation-state"
+  name         = var.table_name
   billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "report_id"
-
-  attribute {
-    name = "report_id"
-    type = "S"
-  }
+  hash_key     = "campaign_id"
+  range_key    = "report_id"
 
   attribute {
     name = "campaign_id"
@@ -24,15 +22,13 @@ resource "aws_dynamodb_table" "report_generation_state" {
   }
 
   attribute {
-    name = "created_at"
+    name = "report_id"
     type = "S"
   }
 
-  # GET /api/reports?campaignId= (newest first via ScanIndexForward=false).
   global_secondary_index {
-    name            = "campaign_id-created_at-index"
-    hash_key        = "campaign_id"
-    range_key       = "created_at"
+    name            = "report_id-index"
+    hash_key        = "report_id"
     projection_type = "ALL"
   }
 
@@ -46,7 +42,7 @@ resource "aws_dynamodb_table" "report_generation_state" {
   }
 
   tags = {
-    Name        = "${var.resource_prefix}-generation-state"
+    Name        = var.table_name
     Environment = var.environment
   }
 }

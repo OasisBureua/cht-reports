@@ -104,8 +104,9 @@ data "aws_iam_policy_document" "task_generation_state" {
       "dynamodb:PutItem",
       "dynamodb:UpdateItem",
       "dynamodb:DeleteItem",
+      "dynamodb:Query",
     ]
-    resources = [var.dynamodb_table_arn]
+    resources = [var.dynamodb_table_arn, "${var.dynamodb_table_arn}/index/*"]
   }
 
   statement {
