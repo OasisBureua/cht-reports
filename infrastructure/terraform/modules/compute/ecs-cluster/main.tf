@@ -28,8 +28,9 @@ data "aws_subnets" "platform_private" {
     values = [data.aws_vpc.platform.id]
   }
 
+  # Platform VPC subnets are tagged Type = private / public.
   tags = {
-    Tier = "private"
+    Type = "private"
   }
 }
 
