@@ -10,6 +10,7 @@ import { ReportReadyNotifier } from './notify/report-ready.service';
 import { ReportGenerationOrchestrator } from './orchestrator';
 import { ReportRequestsConsumer } from './consumer';
 import { TemplateStore } from './templates/template-store.service';
+import { CognitoM2mTokenService } from '../auth/cognito-m2m-token.service';
 
 @Module({
   imports: [ConfigModule, AwsModule],
@@ -23,6 +24,7 @@ import { TemplateStore } from './templates/template-store.service';
     ReportGenerationOrchestrator,
     ReportRequestsConsumer,
     TemplateStore,
+    CognitoM2mTokenService,
   ],
 })
 export class ReportsModule {}

@@ -33,6 +33,7 @@ platform_vpc_name                    = "cht-dev-vpc"
 platform_backend_security_group_name = "cht-dev-backend-sg"
 service_connect_namespace_name       = "cht-dev.local"
 companion_bff_auth_secret_name       = "cht-dev-companion-bff-auth"
+contenthub_m2m_secret_name           = "cht-dev-cognito-m2m-reports"
 companion_kms_alias                  = "alias/cht-dev-companion"
 
 # cht-platform-tool backend task role: enqueues report requests and writes

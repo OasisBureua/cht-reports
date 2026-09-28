@@ -18,7 +18,13 @@ export interface AppEnv {
   awsEndpoint: string;
   reportsBucket: string;
   contentHubBaseUrl: string;
-  contentHubApiKey: string;
+  /** cht-reports -> Hub M2M (client_credentials, hub/reports.read). */
+  contentHubM2m: {
+    clientId: string;
+    clientSecret: string;
+    tokenUrl: string;
+    scope: string;
+  };
   reportRequestsQueueUrl: string;
   reportReadyTopicArn: string;
   generationStateTable: string;
@@ -37,7 +43,12 @@ export function loadEnv(): AppEnv {
     awsEndpoint: process.env.AWS_ENDPOINT ?? '',
     reportsBucket: required('REPORTS_BUCKET'),
     contentHubBaseUrl: required('CONTENTHUB_BASE_URL'),
-    contentHubApiKey: process.env.CONTENTHUB_API_KEY ?? '',
+    contentHubM2m: {
+      clientId: process.env.CONTENTHUB_M2M_CLIENT_ID?.trim() ?? '',
+      clientSecret: process.env.CONTENTHUB_M2M_CLIENT_SECRET?.trim() ?? '',
+      tokenUrl: process.env.CONTENTHUB_M2M_TOKEN_URL?.trim() ?? '',
+      scope: process.env.CONTENTHUB_M2M_SCOPE?.trim() || 'hub/reports.read',
+    },
     reportRequestsQueueUrl: required('REPORT_REQUESTS_QUEUE_URL'),
     reportReadyTopicArn: required('REPORT_READY_TOPIC_ARN'),
     generationStateTable: required('GENERATION_STATE_TABLE'),
