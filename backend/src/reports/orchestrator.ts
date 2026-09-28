@@ -19,6 +19,7 @@ import { ReportStorageService } from './storage/report-storage.service';
 import { ReportReadyNotifier } from './notify/report-ready.service';
 import { GenerationStateService } from './state/generation-state.service';
 import { cleanTranscriptText, splitPrerecordedLivestream } from './preprocess/transcript';
+import { TemplateStore } from './templates/template-store.service';
 
 export interface ReportRequest {
   requestId: string;
@@ -36,6 +37,7 @@ export class ReportGenerationOrchestrator {
     private readonly storage: ReportStorageService,
     private readonly notifier: ReportReadyNotifier,
     private readonly state: GenerationStateService,
+    private readonly templates: TemplateStore,
   ) {}
 
   async handle(request: ReportRequest): Promise<void> {
@@ -64,11 +66,13 @@ export class ReportGenerationOrchestrator {
         sources: existing.sources,
       });
 
+      const { template, note: templateNote } = await this.templates.load(packet.template);
+
       await this.state.markStatus(requestId, 'generating');
-      const content = await this.generateContent(packet);
+      const content = await this.generateContent(packet, template.systemPrompt, templateNote);
 
       await this.state.markStatus(requestId, 'rendering');
-      const html = await this.reportDoc.renderExecutiveSummary(content);
+      const html = await this.reportDoc.renderExecutiveSummary(content, template.html);
 
       await this.state.markStatus(requestId, 'uploading');
       const s3Key = await this.storage.uploadReport(requestId, html);
@@ -91,7 +95,11 @@ export class ReportGenerationOrchestrator {
    * pre-record/livestream split happen here. Hub already ETL'd the warehouse
    * copy; this path never queries Aurora or cht-platform-tool.
    */
-  private async generateContent(packet: ReportInputPacket): Promise<ExecutiveSummaryContent> {
+  private async generateContent(
+    packet: ReportInputPacket,
+    systemPrompt: string,
+    templateNote: string | null,
+  ): Promise<ExecutiveSummaryContent> {
     const cleanedSessions = packet.sessions.map((session) => {
       const cleaned = cleanTranscriptText(session.transcriptText ?? '');
       const { prerecorded, livestream } = splitPrerecordedLivestream(cleaned);
@@ -121,7 +129,7 @@ export class ReportGenerationOrchestrator {
     const hubspotContext = packet.hubspotRawData ? JSON.stringify(packet.hubspotRawData) : '';
 
     const result = await this.companion.generate({
-      systemPrompt: EXECUTIVE_SUMMARY_SYSTEM_PROMPT,
+      systemPrompt,
       userContent: `Transcripts:\n${transcriptContext}\n\nSurvey responses:\n${surveyContext}\n\nPlatform metrics:\n${platformContext}\n\nHubSpot:\n${hubspotContext}`,
       temperature: 0.2,
     });
@@ -129,6 +137,7 @@ export class ReportGenerationOrchestrator {
     const missingSources = Object.entries(packet.inputCompleteness)
       .filter(([, v]) => v.status !== 'ok')
       .map(([source, v]) => `${source}: ${v.status}`);
+    if (templateNote) missingSources.push(templateNote);
 
     return {
       title: `Executive Summary: ${packet.campaignName ?? `Campaign ${packet.campaignId}`}`,
@@ -141,8 +150,6 @@ export class ReportGenerationOrchestrator {
     };
   }
 }
-
-const EXECUTIVE_SUMMARY_SYSTEM_PROMPT = `You are generating an Executive Summary report for a CHM medical education campaign. Use only the transcript, survey, platform metric, and HubSpot data provided. Do not invent data not present in the input.`;
 
 /**
  * Placeholder section parser. Real output-structure parsing (headline/body

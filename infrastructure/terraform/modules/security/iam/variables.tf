@@ -20,6 +20,11 @@ variable "s3_bucket_arn" {
   type        = string
 }
 
+variable "s3_kms_key_arn" {
+  description = "Reports bucket KMS key (SSE-KMS default), from module.kms.s3_kms_key_arn."
+  type        = string
+}
+
 variable "report_ready_topic_arn" {
   type = string
 }

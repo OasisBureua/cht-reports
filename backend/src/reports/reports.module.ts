@@ -9,6 +9,7 @@ import { ReportStorageService } from './storage/report-storage.service';
 import { ReportReadyNotifier } from './notify/report-ready.service';
 import { ReportGenerationOrchestrator } from './orchestrator';
 import { ReportRequestsConsumer } from './consumer';
+import { TemplateStore } from './templates/template-store.service';
 
 @Module({
   imports: [ConfigModule, AwsModule],
@@ -21,6 +22,7 @@ import { ReportRequestsConsumer } from './consumer';
     ReportReadyNotifier,
     ReportGenerationOrchestrator,
     ReportRequestsConsumer,
+    TemplateStore,
   ],
 })
 export class ReportsModule {}

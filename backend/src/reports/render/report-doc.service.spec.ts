@@ -88,4 +88,31 @@ describe('ReportDocService', () => {
     expect(html).toContain('5 &lt; 10 and 10 &gt; 5');
     expect(html).toContain('&#39;s &lt;complicated&gt;');
   });
+
+  it('fills a custom HTML template (CPR-25) instead of the built-in one', async () => {
+    const html = await service.renderExecutiveSummary(
+      baseContent,
+      '<article data-v="2"><h1>{{title}}</h1>{{sections}}{{inputCompleteness}}</article>',
+    );
+
+    expect(html.startsWith('<article data-v="2">')).toBe(true);
+    expect(html).toContain('<h1>Executive Summary: Campaign 42</h1>');
+    expect(html).toContain('<h2>Overview</h2>');
+    expect(html).not.toContain('<!DOCTYPE html>');
+  });
+
+  it('does not re-scan inserted content for placeholders', async () => {
+    const html = await service.renderExecutiveSummary(
+      { ...baseContent, sections: [{ heading: 'H', paragraphs: ['literal {{title}} and $& here'] }] },
+      '<main>{{sections}}</main>',
+    );
+
+    expect(html).toContain('literal {{title}} and $&amp; here');
+  });
+
+  it('leaves unknown placeholders untouched', async () => {
+    const html = await service.renderExecutiveSummary(baseContent, '<p>{{footer}}</p>{{title}}');
+
+    expect(html).toBe('<p>{{footer}}</p>Executive Summary: Campaign 42');
+  });
 });

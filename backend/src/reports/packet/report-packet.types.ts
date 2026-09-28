@@ -30,6 +30,14 @@ export interface ReportPacketPlatformSlice {
   syncedAt: string | null;
 }
 
+/** CPR-25: Hub catalog pointer to the template body in the reports bucket. */
+export interface ReportPacketTemplate {
+  id: number;
+  type: string;
+  semver: string;
+  s3Key: string;
+}
+
 export interface ReportInputPacket {
   campaignId: number;
   campaignName: string;
@@ -40,6 +48,8 @@ export interface ReportInputPacket {
   platformSlices: ReportPacketPlatformSlice[];
   sessions: ReportPacketSession[];
   surveyResponses: ReportPacketSurvey[];
+  /** Absent on older Hub deploys; null when Hub has no template row. */
+  template?: ReportPacketTemplate | null;
   inputCompleteness: Record<string, SourceCompleteness>;
 }
 

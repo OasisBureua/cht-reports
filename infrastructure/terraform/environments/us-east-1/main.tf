@@ -324,6 +324,7 @@ module "iam" {
   secrets_kms_key_arn = module.kms.secrets_kms_key_arn
   secret_arns         = ["${module.secrets.secret_arn}*"]
   s3_bucket_arn       = module.s3_reports.bucket_arn
+  s3_kms_key_arn      = module.kms.s3_kms_key_arn
 
   report_ready_topic_arn    = module.sns_report_ready.topic_arn
   report_requests_queue_arn = module.sqs_report_requests.queue_arn
