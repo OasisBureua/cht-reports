@@ -25,7 +25,7 @@ variable "deletion_window_in_days" {
 }
 
 variable "platform_tool_role_arns" {
-  description = "cht-platform-tool task role ARNs that send report requests (SQS) and write report items (DynamoDB)."
+  description = "cht-platform-tool task role ARNs (SQS send, DynamoDB write, artifacts GetObject + KMS via S3)."
   type        = list(string)
   default     = []
 }

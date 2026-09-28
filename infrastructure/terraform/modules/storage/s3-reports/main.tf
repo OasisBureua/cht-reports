@@ -34,6 +34,26 @@ resource "aws_s3_bucket_public_access_block" "reports" {
   restrict_public_buckets = true
 }
 
+# Platform streams PDFs through cht-dev-ecs-task / cht-platform-ecs-task.
+# Same resource-policy pattern as the report-state table and request queue.
+resource "aws_s3_bucket_policy" "platform_tool_read" {
+  count = length(var.platform_tool_role_arns) > 0 ? 1 : 0
+
+  bucket = aws_s3_bucket.reports.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "PlatformToolGetReports"
+        Effect    = "Allow"
+        Principal = { AWS = var.platform_tool_role_arns }
+        Action    = ["s3:GetObject"]
+        Resource  = ["${aws_s3_bucket.reports.arn}/reports/*"]
+      },
+    ]
+  })
+}
+
 resource "aws_s3_bucket_lifecycle_configuration" "reports" {
   bucket = aws_s3_bucket.reports.id
 

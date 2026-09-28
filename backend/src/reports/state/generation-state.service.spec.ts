@@ -104,4 +104,30 @@ describe('GenerationStateService', () => {
     ddbMock.on(QueryCommand).resolves({ Items: [] });
     expect(await service().get('missing')).toBeNull();
   });
+
+  it('sets s3_key_pdf on the same UpdateItem as status=complete', async () => {
+    ddbMock.on(QueryCommand).resolves({
+      Items: [{ campaign_id: '9', report_id: 'req-1', status: 'uploading', attempt_count: 1 }],
+    });
+    ddbMock.on(UpdateCommand).resolves({
+      Attributes: {
+        campaign_id: '9',
+        report_id: 'req-1',
+        status: 'complete',
+        s3_key_pdf: 'reports/9/req-1/v1.pdf',
+        attempt_count: 1,
+        last_error: null,
+        created_at: '2026-01-01T00:00:00.000Z',
+        updated_at: '2026-01-01T00:00:01.000Z',
+      },
+    });
+
+    const state = await service().markComplete('req-1', 'reports/9/req-1/v1.pdf');
+
+    expect(state.status).toBe('complete');
+    expect(state.s3KeyPdf).toBe('reports/9/req-1/v1.pdf');
+    const update = ddbMock.commandCalls(UpdateCommand)[0].args[0].input;
+    expect(update.ExpressionAttributeValues?.[':status']).toBe('complete');
+    expect(update.ExpressionAttributeValues?.[':s3_key_pdf']).toBe('reports/9/req-1/v1.pdf');
+  });
 });

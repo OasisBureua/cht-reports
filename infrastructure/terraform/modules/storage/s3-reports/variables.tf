@@ -18,3 +18,9 @@ variable "force_destroy" {
   type        = bool
   default     = false
 }
+
+variable "platform_tool_role_arns" {
+  description = "cht-platform-tool task role ARNs allowed to GetObject reports/* (download stream)."
+  type        = list(string)
+  default     = []
+}

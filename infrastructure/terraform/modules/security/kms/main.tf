@@ -6,6 +6,7 @@ resource "aws_kms_key" "s3" {
   description             = "${local.prefix} S3 encryption key"
   deletion_window_in_days = var.deletion_window_in_days
   enable_key_rotation     = true
+  policy                  = local.s3_key_policy
 
   tags = {
     Name        = "${local.prefix}-s3-key"
@@ -181,11 +182,10 @@ resource "aws_kms_alias" "sns" {
   target_key_id = aws_kms_key.sns.key_id
 }
 
-# SQS and DynamoDB keys: the default account-root statement (IAM policies
-# keep working for this repo's own roles), plus cht-platform-tool's task
-# role, which only gets the key through SQS / DynamoDB (kms:ViaService).
-# Without this, that role's SendMessage / PutItem calls fail on KMS even
-# though the queue and table policies allow them.
+# SQS, DynamoDB, and S3 keys: account-root (IAM policies keep working for
+# this repo's own roles), plus cht-platform-tool's task role via the
+# matching kms:ViaService. Without the S3 statement, Platform GetObject on
+# SSE-KMS artifacts fails even with a bucket policy.
 locals {
   root_key_statement = {
     Sid       = "EnableRootAccountPermissions"
@@ -194,6 +194,18 @@ locals {
     Action    = "kms:*"
     Resource  = "*"
   }
+
+  s3_key_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = concat([local.root_key_statement], length(var.platform_tool_role_arns) == 0 ? [] : [{
+      Sid       = "PlatformToolViaS3"
+      Effect    = "Allow"
+      Principal = { AWS = var.platform_tool_role_arns }
+      Action    = ["kms:Decrypt"]
+      Resource  = "*"
+      Condition = { StringEquals = { "kms:ViaService" = "s3.${var.aws_region}.amazonaws.com" } }
+    }])
+  })
 
   sqs_key_policy = jsonencode({
     Version = "2012-10-17"
