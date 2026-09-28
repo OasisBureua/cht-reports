@@ -49,7 +49,9 @@
         "ecr:UntagResource",
         "ecr:PutLifecyclePolicy",
         "ecr:GetLifecyclePolicy",
-        "ecr:DeleteLifecyclePolicy"
+        "ecr:DeleteLifecyclePolicy",
+        "ecr:GetRepositoryPolicy",
+        "ecr:SetRepositoryPolicy"
       ],
       "Resource": "arn:aws:ecr:us-east-1:233636046512:repository/cht-reports-dev-*"
     },
