@@ -10,7 +10,7 @@ backend, optional containerized lambdas, and infra.
 | `pr-validation.yml` | Pull requests | Backend tests/build, lambda tests, Terraform validate |
 | `branch-policy.yml` | PRs → `main` | Require head branch `release/*` or `hotfix/*` |
 | `security-monthly.yml` | First Monday monthly | npm audit, pip/Trivy filesystem scan |
-| `deploy-dev.yml` | Manual (`workflow_dispatch`) | Images → `cht-reports-dev-*` ECR, Terraform apply dev |
+| `deploy-dev.yml` | Push to `develop` or `feature/**`, or manual (`workflow_dispatch`) | Images → `cht-reports-dev-*` ECR, Terraform apply dev |
 | `deploy-prod.yml` | Manual (`workflow_dispatch`) | Images → `cht-reports-prod-*` ECR, Terraform apply production |
 | `rollback.yml` | Manual | Roll back Lambda `live` alias (ECS rollback when that module exists) |
 
@@ -29,16 +29,19 @@ Manual **Run workflow** has `deploy_all` (default off) to force every lane.
 ## Branch flow
 
 ```text
-feature/*  →  PR checks only (no deploy)
+feature/**  →  push deploys to dev (this workflow)
        ↓
-    develop
+    develop  →  push deploys to dev
        ↓
 release/vX.Y.Z
        ↓
  PR release/* or hotfix/* → main  (no deploy)
 
-Deploys: Actions → Deploy to Development / Deploy to Production → Run workflow
+Dev also: Actions → Deploy to Development → Run workflow
+Prod: Actions → Deploy to Production → Run workflow (manual only)
 ```
+
+Pushes to `main`, `release/*`, and `hotfix/*` do **not** run deploy-dev. Docs-only changes under `docs/**` do not trigger deploy.
 
 GitHub **rulesets** on `main`: require PRs, require checks
 `main-from-release-only` and `release-contains-develop`. Same as

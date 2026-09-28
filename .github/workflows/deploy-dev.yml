@@ -1,6 +1,6 @@
 name: Deploy to Development
 
-# Manual only. A git push never deploys.
+# Manual dispatch, or push to develop / feature/** only (not main, release/*, hotfix/*).
 on:
   workflow_dispatch:
     inputs:
@@ -12,6 +12,16 @@ on:
         description: 'Deploy all lanes (ignore change detection)'
         type: boolean
         default: false
+  push:
+    branches:
+      - develop
+      - 'feature/**'
+    paths:
+      - 'backend/**'
+      - 'lambdas/**'
+      - 'infrastructure/**'
+      - 'scripts/**'
+      - '.github/workflows/**'
 
 concurrency:
   group: deploy-cht-reports-dev
