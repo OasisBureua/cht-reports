@@ -7,6 +7,7 @@ Operational docs for CHT Reports. Start here:
 | [engineering/github-oidc.md](./engineering/github-oidc.md) | GitHub Actions OIDC setup |
 | [engineering/getting-started.md](./engineering/getting-started.md) | Local development setup |
 | [engineering/architecture.md](./engineering/architecture.md) | System design |
+| [engineering/tracing.md](./engineering/tracing.md) | Cross-repo `reportId` / `X-Request-Id` (pre-prod) |
 | [engineering/companion-generate-model.md](./engineering/companion-generate-model.md) | cht-companion `/generate` + Sonnet |
 | [engineering/deployment.md](./engineering/deployment.md) | Dev and production deploys |
 

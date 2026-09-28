@@ -347,7 +347,9 @@ module "iam" {
   s3_kms_key_arn      = module.kms.s3_kms_key_arn
 
   report_ready_topic_arn    = module.sns_report_ready.topic_arn
+  sns_kms_key_arn           = module.kms.sns_kms_key_arn
   report_requests_queue_arn = module.sqs_report_requests.queue_arn
+  sqs_kms_key_arn           = module.kms.sqs_kms_key_arn
 
   dynamodb_table_arn   = module.dynamodb.table_arn
   dynamodb_kms_key_arn = module.kms.dynamodb_kms_key_arn

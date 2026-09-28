@@ -29,8 +29,18 @@ variable "report_ready_topic_arn" {
   type = string
 }
 
+variable "sns_kms_key_arn" {
+  description = "SNS encryption key (report-ready topic), from module.kms.sns_kms_key_arn."
+  type        = string
+}
+
 variable "report_requests_queue_arn" {
   type = string
+}
+
+variable "sqs_kms_key_arn" {
+  description = "SQS encryption key (report-requests queue), from module.kms.sqs_kms_key_arn."
+  type        = string
 }
 
 variable "dynamodb_table_arn" {
