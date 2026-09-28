@@ -318,6 +318,17 @@ jobs:
         working-directory: ${{ env.TF_ENV_DIR }}
         run: terraform apply tfplan
 
+      # CPR-25: report templates the worker loads via the Hub packet pointer.
+      # Versions are immutable (new semver = new directory), so sync only adds/updates.
+      - name: Sync report templates to S3
+        if: needs.changes.outputs.deploy_backend == 'true' && github.event.inputs.plan_only != 'true'
+        working-directory: ${{ env.TF_ENV_DIR }}
+        run: |
+          BUCKET="$(terraform output -raw reports_bucket)"
+          aws s3 sync "${GITHUB_WORKSPACE}/backend/templates/" "s3://${BUCKET}/templates/" \
+            --exclude "README.md" --no-progress
+          echo "Synced backend/templates/ to s3://${BUCKET}/templates/" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Smoke invoke generator
         if: needs.changes.outputs.deploy_lambda == 'true' && github.event.inputs.plan_only != 'true'
         run: |

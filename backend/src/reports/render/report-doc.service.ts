@@ -20,6 +20,7 @@
  */
 
 import { Injectable } from '@nestjs/common';
+import { BUILTIN_HTML_TEMPLATE } from '../templates/builtin';
 
 export interface ExecutiveSummarySection {
   heading: string;
@@ -35,7 +36,15 @@ export interface ExecutiveSummaryContent {
 
 @Injectable()
 export class ReportDocService {
-  async renderExecutiveSummary(content: ExecutiveSummaryContent): Promise<string> {
+  /**
+   * Fill the HTML skeleton (CPR-25 template, or the built-in one) with the
+   * generated content. Placeholders: {{title}}, {{sections}},
+   * {{inputCompleteness}}. All inserted text is HTML-escaped.
+   */
+  async renderExecutiveSummary(
+    content: ExecutiveSummaryContent,
+    htmlTemplate: string = BUILTIN_HTML_TEMPLATE,
+  ): Promise<string> {
     const sectionsHtml = content.sections
       .map(
         (section) => `
@@ -54,23 +63,23 @@ export class ReportDocService {
       </section>`
       : '';
 
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>${escapeHtml(content.title)}</title>
-  <style>${REPORT_STYLES}</style>
-</head>
-<body>
-  <main>
-    <h1>${escapeHtml(content.title)}</h1>
-${sectionsHtml}
-${inputCompletenessHtml}
-  </main>
-</body>
-</html>
-`;
+    return fill(htmlTemplate, {
+      title: escapeHtml(content.title),
+      sections: sectionsHtml,
+      inputCompleteness: inputCompletenessHtml,
+    });
   }
+}
+
+/**
+ * Single pass over the template: inserted content is never re-scanned for
+ * placeholders, and a function replacer keeps `$` in content literal.
+ * Unknown placeholders are left as-is.
+ */
+function fill(template: string, values: Record<string, string>): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
+    Object.prototype.hasOwnProperty.call(values, name) ? values[name] : match,
+  );
 }
 
 function escapeHtml(text: string): string {
@@ -81,11 +90,3 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
-
-const REPORT_STYLES = `
-  body { font-family: Georgia, 'Times New Roman', serif; color: #1a1a1a; max-width: 760px; margin: 0 auto; padding: 48px 24px; line-height: 1.6; }
-  h1 { font-size: 28px; margin-bottom: 32px; }
-  h2 { font-size: 20px; margin-top: 40px; border-bottom: 1px solid #ddd; padding-bottom: 8px; }
-  p { font-size: 16px; margin: 16px 0; }
-  .input-completeness p { color: #555; }
-`;

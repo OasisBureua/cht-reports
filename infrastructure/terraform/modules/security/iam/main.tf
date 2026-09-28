@@ -75,6 +75,21 @@ data "aws_iam_policy_document" "task_reports_io" {
     resources = ["${var.s3_bucket_arn}/*"]
   }
 
+  # Bucket default encryption is SSE-KMS with the reports key, whose key
+  # policy delegates to IAM. Without this, PutObject (reports) and GetObject
+  # (CPR-25 templates) are denied. Scoped to use through S3 only.
+  statement {
+    sid       = "ReportsBucketKms"
+    actions   = ["kms:Decrypt", "kms:GenerateDataKey"]
+    resources = [var.s3_kms_key_arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["s3.${data.aws_region.current.name}.amazonaws.com"]
+    }
+  }
+
   statement {
     sid       = "ReportReadyPublish"
     actions   = ["sns:Publish"]
@@ -121,3 +136,5 @@ resource "aws_iam_role_policy" "task_generation_state" {
   role   = aws_iam_role.ecs_task.id
   policy = data.aws_iam_policy_document.task_generation_state.json
 }
+
+data "aws_region" "current" {}
