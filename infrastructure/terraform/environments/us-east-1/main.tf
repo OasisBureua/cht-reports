@@ -239,6 +239,25 @@ data "aws_secretsmanager_secret" "companion_bff_auth" {
   name = var.companion_bff_auth_secret_name
 }
 
+# cht-reports -> Content Hub M2M credentials (hub/reports.read). Created and
+# owned by cht-content-hub TF (cht-{env}-cognito-m2m-reports, JSON
+# client_id/client_secret/token_url/scope). Same cross-repo-secret pattern as
+# companion_bff_auth: data source here, lifecycle in the owning repo.
+data "aws_secretsmanager_secret" "contenthub_m2m" {
+  count = var.contenthub_m2m_secret_name != "" ? 1 : 0
+  name  = var.contenthub_m2m_secret_name
+}
+
+locals {
+  contenthub_m2m_secret_arn = try(data.aws_secretsmanager_secret.contenthub_m2m[0].arn, "")
+  contenthub_m2m_task_secrets = local.contenthub_m2m_secret_arn == "" ? {} : {
+    CONTENTHUB_M2M_CLIENT_ID     = "${local.contenthub_m2m_secret_arn}:client_id::"
+    CONTENTHUB_M2M_CLIENT_SECRET = "${local.contenthub_m2m_secret_arn}:client_secret::"
+    CONTENTHUB_M2M_TOKEN_URL     = "${local.contenthub_m2m_secret_arn}:token_url::"
+    CONTENTHUB_M2M_SCOPE         = "${local.contenthub_m2m_secret_arn}:scope::"
+  }
+}
+
 # cht-companion uses one shared KMS key for everything (not a per-service
 # split like this repo's own kms module), with a root-account-wide grant.
 # Same-account IAM policy on cht-reports' execution role is what actually
@@ -322,7 +341,7 @@ module "iam" {
   resource_prefix     = local.resource_prefix
   environment         = var.environment
   secrets_kms_key_arn = module.kms.secrets_kms_key_arn
-  secret_arns         = ["${module.secrets.secret_arn}*"]
+  secret_arns         = compact(["${module.secrets.secret_arn}*", local.contenthub_m2m_secret_arn])
   s3_bucket_arn       = module.s3_reports.bucket_arn
   s3_kms_key_arn      = module.kms.s3_kms_key_arn
 
@@ -364,10 +383,15 @@ module "ecs_backend" {
     MAX_GENERATION_ATTEMPTS   = "5"
   }
 
-  secret_arns = {
-    CONTENTHUB_API_KEY = "${module.secrets.secret_arn}:CONTENTHUB_API_KEY::"
-    # Plain-string secret (not JSON), no :KEY:: suffix. Matches how
-    # cht-companion's own ecs-companion module consumes this same secret.
-    COMPANION_INTERNAL_SECRET = data.aws_secretsmanager_secret.companion_bff_auth.arn
-  }
+  secret_arns = merge(
+    {
+      # No longer read by the worker (Hub requires Bearer since
+      # cht-content-hub #153). Removed in the long-lived secret cleanup.
+      CONTENTHUB_API_KEY = "${module.secrets.secret_arn}:CONTENTHUB_API_KEY::"
+      # Plain-string secret (not JSON), no :KEY:: suffix. Matches how
+      # cht-companion's own ecs-companion module consumes this same secret.
+      COMPANION_INTERNAL_SECRET = data.aws_secretsmanager_secret.companion_bff_auth.arn
+    },
+    local.contenthub_m2m_task_secrets,
+  )
 }

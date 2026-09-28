@@ -7,7 +7,12 @@ export const testEnv: AppEnv = {
   awsEndpoint: '',
   reportsBucket: 'test-bucket',
   contentHubBaseUrl: 'https://hub.test/api/admin',
-  contentHubApiKey: 'hub-key',
+  contentHubM2m: {
+    clientId: 'test-client',
+    clientSecret: 'test-client-secret',
+    tokenUrl: 'https://auth.test/oauth2/token',
+    scope: 'hub/reports.read',
+  },
   reportRequestsQueueUrl: 'https://sqs.test/queue',
   reportReadyTopicArn: 'arn:aws:sns:test',
   generationStateTable: 'test-generation-state',

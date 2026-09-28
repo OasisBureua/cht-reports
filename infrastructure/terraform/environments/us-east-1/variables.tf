@@ -118,6 +118,12 @@ variable "report_request_visibility_timeout_seconds" {
 # cht-companion cross-repo references (for calling POST /generate)
 # ============================================
 
+variable "contenthub_m2m_secret_name" {
+  description = "Content Hub-owned M2M secret for reports -> Hub (cht-dev-cognito-m2m-reports). Empty skips the lookup (e.g. before Hub creates it)."
+  type        = string
+  default     = ""
+}
+
 variable "companion_bff_auth_secret_name" {
   description = "cht-companion's BFF-auth Secrets Manager secret name (cht-dev-companion-bff-auth / cht-companion-bff-auth)."
   type        = string

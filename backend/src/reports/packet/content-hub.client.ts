@@ -1,6 +1,7 @@
 /**
  * Fetch the generate-time input packet from Content Hub.
- * Hub owns warehouse SQL; this client is HTTPS + X-API-Key only.
+ * Hub owns warehouse SQL; this client is HTTPS + Cognito M2M Bearer
+ * (hub/reports.read) only. Hub rejects X-API-Key since cht-content-hub #153.
  *
  * CONTENTHUB_BASE_URL may be origin, `/api`, `/api/public`, or `/api/admin`.
  * The packet route is `/api/campaigns/{id}/report-packet`, outside both.
@@ -10,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { AppEnv } from '../../config/env';
 import { APP_ENV } from '../../config/config.module';
+import { CognitoM2mTokenService } from '../../auth/cognito-m2m-token.service';
 import type { FetchReportPacketInput, ReportInputPacket } from './report-packet.types';
 
 export class ContentHubClientError extends Error {}
@@ -23,7 +25,10 @@ export function contentHubApiBase(url: string): string {
 export class ContentHubClient {
   private readonly logger = new Logger(ContentHubClient.name);
 
-  constructor(@Inject(APP_ENV) private readonly env: AppEnv) {}
+  constructor(
+    @Inject(APP_ENV) private readonly env: AppEnv,
+    private readonly tokens: CognitoM2mTokenService,
+  ) {}
 
   async fetchReportPacket(input: FetchReportPacketInput): Promise<ReportInputPacket> {
     const params = new URLSearchParams();
@@ -35,14 +40,13 @@ export class ContentHubClient {
     const qs = params.toString();
     const url = `${contentHubApiBase(this.env.contentHubBaseUrl)}/campaigns/${input.campaignId}/report-packet${qs ? `?${qs}` : ''}`;
 
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'X-API-Key': this.env.contentHubApiKey,
-        'X-Client': 'cht-reports',
-        'X-Request-Id': randomUUID(),
-      },
-    });
+    const requestId = randomUUID();
+    let response = await this.get(url, requestId);
+    if (response.status === 401) {
+      // Token revoked or expired early: mint a fresh one and retry once.
+      this.tokens.invalidate();
+      response = await this.get(url, requestId);
+    }
 
     if (!response.ok) {
       const body = await response.text();
@@ -51,5 +55,17 @@ export class ContentHubClient {
     }
 
     return (await response.json()) as ReportInputPacket;
+  }
+
+  private async get(url: string, requestId: string): Promise<Response> {
+    const token = await this.tokens.getAccessToken();
+    return fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Client': 'cht-reports',
+        'X-Request-Id': requestId,
+      },
+    });
   }
 }
