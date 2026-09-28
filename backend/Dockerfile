@@ -12,9 +12,12 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-RUN apk add --no-cache curl
+# Chromium prints the HTML report to a real PDF (Platform rejects HTML).
+RUN apk add --no-cache curl chromium nss freetype harfbuzz ca-certificates ttf-freefont font-noto
 
 ENV NODE_ENV=production
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules

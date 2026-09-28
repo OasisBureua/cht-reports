@@ -94,8 +94,9 @@ module "s3_reports" {
 
   resource_prefix = local.resource_prefix
   environment     = var.environment
-  kms_key_arn     = module.kms.s3_kms_key_arn
-  force_destroy   = var.s3_force_destroy
+  kms_key_arn             = module.kms.s3_kms_key_arn
+  force_destroy           = var.s3_force_destroy
+  platform_tool_role_arns = var.platform_tool_role_arns
 }
 
 # ============================================

@@ -26,9 +26,9 @@ variable "task_cpu" {
 }
 
 variable "task_memory" {
-  description = "Fargate task memory (MB). 1024 matches cht-companion; revisit if DOCX rendering needs more headroom."
+  description = "Fargate task memory (MB). 2048 gives Chromium headroom to print HTML → PDF."
   type        = number
-  default     = 1024
+  default     = 2048
 }
 
 variable "desired_count" {

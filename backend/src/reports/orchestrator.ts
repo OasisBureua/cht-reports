@@ -75,10 +75,10 @@ export class ReportGenerationOrchestrator {
       const html = await this.reportDoc.renderExecutiveSummary(content, template.html);
 
       await this.state.markStatus(requestId, 'uploading');
-      const s3Key = await this.storage.uploadReport(requestId, html);
+      const s3Key = await this.storage.uploadReport(String(campaignId), requestId, html);
 
       await this.notifier.notify({ requestId, campaignId: String(campaignId), s3Key });
-      await this.state.markComplete(requestId);
+      await this.state.markComplete(requestId, s3Key);
 
       this.logger.log(`Request ${requestId} complete: ${s3Key}`);
     } catch (err) {
