@@ -144,6 +144,14 @@ resource "aws_ecs_service" "reports" {
 
   depends_on = [aws_cloudwatch_log_group.reports]
 
+  # One-task SQS worker: any minimumHealthyPercent > 0 rounds up to 1, so ECS
+  # keeps the current 512/2048 task and needs a *second* task to roll. That
+  # is "100% of memory holding the running task." 0% lets the scheduler stop
+  # the old task first (queue keeps the messages). 200% still allows start-
+  # new-then-stop-old when a second Fargate task can launch.
+  deployment_minimum_healthy_percent = 0
+  deployment_maximum_percent         = 200
+
   deployment_circuit_breaker {
     enable   = var.environment == "production"
     rollback = var.environment == "production"
