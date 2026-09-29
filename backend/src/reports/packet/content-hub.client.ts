@@ -32,6 +32,14 @@ export function contentHubApiBase(url: string): string {
   return `${origin}/api`;
 }
 
+/** Same-origin only. Node fetch drops Authorization on any redirect. */
+export function sameOriginRedirect(fromUrl: string, location: string | null): string | null {
+  if (!location) return null;
+  const next = new URL(location, fromUrl);
+  if (next.origin !== new URL(fromUrl).origin) return null;
+  return next.toString();
+}
+
 @Injectable()
 export class ContentHubClient {
   private readonly logger = new Logger(ContentHubClient.name);
@@ -51,17 +59,23 @@ export class ContentHubClient {
     const qs = params.toString();
     const url = `${contentHubApiBase(this.env.contentHubBaseUrl)}/campaigns/${input.campaignId}/report-packet${qs ? `?${qs}` : ''}`;
 
-    const requestId = randomUUID();
+    const requestId = input.requestId || randomUUID();
     let response = await this.get(url, requestId);
     if (response.status === 401) {
-      // Token revoked or expired early: mint a fresh one and retry once.
-      this.tokens.invalidate();
-      response = await this.get(url, requestId);
+      const peek = await response.clone().text();
+      // Hub "Missing bearer token" means the Authorization header never
+      // arrived (redirect strip, proxy). A new Cognito token will not help.
+      if (!/missing bearer token/i.test(peek)) {
+        this.tokens.invalidate();
+        response = await this.get(url, requestId);
+      }
     }
 
     if (!response.ok) {
       const body = await response.text();
-      this.logger.error(`Content Hub report-packet failed (${response.status}) campaign=${input.campaignId}`);
+      this.logger.error(
+        `Content Hub report-packet failed (${response.status}) campaign=${input.campaignId} url=${url} ${body.slice(0, 200)}`,
+      );
       throw new ContentHubClientError(`Content Hub returned ${response.status}: ${body}`);
     }
 
@@ -70,13 +84,23 @@ export class ContentHubClient {
 
   private async get(url: string, requestId: string): Promise<Response> {
     const token = await this.tokens.getAccessToken();
-    return fetch(url, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'X-Client': 'cht-reports',
-        'X-Request-Id': requestId,
-      },
-    });
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      'X-Client': 'cht-reports',
+      'X-Request-Id': requestId,
+    };
+    this.logger.log(`report-packet GET ${url} bearerLen=${token.length} requestId=${requestId}`);
+
+    let response = await fetch(url, { method: 'GET', redirect: 'manual', headers });
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location');
+      const next = sameOriginRedirect(url, location);
+      this.logger.warn(`report-packet HTTP ${response.status} redirect location=${location} follow=${next ?? 'rejected'}`);
+      if (!next) {
+        throw new ContentHubClientError(`Content Hub redirected to ${location ?? '(none)'}`);
+      }
+      response = await fetch(next, { method: 'GET', redirect: 'manual', headers });
+    }
+    return response;
   }
 }

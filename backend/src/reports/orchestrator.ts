@@ -64,6 +64,7 @@ export class ReportGenerationOrchestrator {
         windowStart: existing.windowStart,
         windowEnd: existing.windowEnd,
         sources: existing.sources,
+        requestId,
       });
 
       const { template, note: templateNote } = await this.templates.load(packet.template);

@@ -58,4 +58,6 @@ export interface FetchReportPacketInput {
   windowStart?: string | null;
   windowEnd?: string | null;
   sources?: string[];
+  /** Spine id (SQS reportId). Sent as X-Request-Id. */
+  requestId?: string;
 }

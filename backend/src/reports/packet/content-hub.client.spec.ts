@@ -1,4 +1,10 @@
-import { ContentHubClient, ContentHubClientError, contentHubApiBase, toHubDate } from './content-hub.client';
+import {
+  ContentHubClient,
+  ContentHubClientError,
+  contentHubApiBase,
+  sameOriginRedirect,
+  toHubDate,
+} from './content-hub.client';
 import { testEnv } from '../../config/test-env';
 import type { CognitoM2mTokenService } from '../../auth/cognito-m2m-token.service';
 
@@ -8,6 +14,18 @@ function tokenStub(...tokens: string[]) {
     getAccessToken: jest.fn(async () => queue.shift() ?? tokens[tokens.length - 1]),
     invalidate: jest.fn(),
   } as unknown as CognitoM2mTokenService & { getAccessToken: jest.Mock; invalidate: jest.Mock };
+}
+
+function mockRes(status: number, body: unknown, headers: Record<string, string> = {}) {
+  const text = typeof body === 'string' ? body : JSON.stringify(body);
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    text: async () => text,
+    json: async () => (typeof body === 'string' ? {} : body),
+    headers: { get: (name: string) => headers[name.toLowerCase()] ?? headers[name] ?? null },
+    clone: () => ({ text: async () => text }),
+  };
 }
 
 describe('contentHubApiBase', () => {
@@ -37,6 +55,18 @@ describe('toHubDate', () => {
   });
 });
 
+describe('sameOriginRedirect', () => {
+  it('resolves a relative Location against the request URL', () => {
+    expect(sameOriginRedirect('https://hub.test/api/campaigns/1/report-packet', '/api/campaigns/1/report-packet/')).toBe(
+      'https://hub.test/api/campaigns/1/report-packet/',
+    );
+  });
+
+  it('rejects a different origin', () => {
+    expect(sameOriginRedirect('https://hub.test/api/x', 'https://evil.test/api/x')).toBeNull();
+  });
+});
+
 describe('ContentHubClient', () => {
   const originalFetch = global.fetch;
 
@@ -45,9 +75,8 @@ describe('ContentHubClient', () => {
   });
 
   it('GETs report-packet with window and sources', async () => {
-    const mockFetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
+    const mockFetch = jest.fn().mockResolvedValue(
+      mockRes(200, {
         campaignId: 9,
         campaignName: 'Q2',
         sessions: [],
@@ -55,7 +84,7 @@ describe('ContentHubClient', () => {
         platformSlices: [],
         inputCompleteness: {},
       }),
-    });
+    );
     global.fetch = mockFetch as unknown as typeof fetch;
 
     const client = new ContentHubClient({ ...testEnv, contentHubBaseUrl: 'https://hub.test' }, tokenStub('tok-1'));
@@ -73,16 +102,16 @@ describe('ContentHubClient', () => {
     expect(called).not.toContain('/api/public');
     expect(called).toContain('windowStart=2026-01-01');
     expect(called).toContain('sources=linkedin');
+    expect(mockFetch.mock.calls[0][1].redirect).toBe('manual');
     expect(mockFetch.mock.calls[0][1].headers.Authorization).toBe('Bearer tok-1');
     expect(mockFetch.mock.calls[0][1].headers['X-API-Key']).toBeUndefined();
     expect(mockFetch.mock.calls[0][1].headers['X-Request-Id']).toEqual(expect.any(String));
   });
 
   it('sends a timestamp window as dates (Hub 422s on datetimes)', async () => {
-    const mockFetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ campaignId: 6, sessions: [], surveyResponses: [], platformSlices: [], inputCompleteness: {} }),
-    });
+    const mockFetch = jest.fn().mockResolvedValue(
+      mockRes(200, { campaignId: 6, sessions: [], surveyResponses: [], platformSlices: [], inputCompleteness: {} }),
+    );
     global.fetch = mockFetch as unknown as typeof fetch;
 
     const client = new ContentHubClient({ ...testEnv, contentHubBaseUrl: 'https://hub.test' }, tokenStub('tok-1'));
@@ -99,10 +128,9 @@ describe('ContentHubClient', () => {
   });
 
   it('rewrites an /api/public CONTENTHUB_BASE_URL onto the packet path', async () => {
-    const mockFetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ campaignId: 1, sessions: [], surveyResponses: [], platformSlices: [], inputCompleteness: {} }),
-    });
+    const mockFetch = jest.fn().mockResolvedValue(
+      mockRes(200, { campaignId: 1, sessions: [], surveyResponses: [], platformSlices: [], inputCompleteness: {} }),
+    );
     global.fetch = mockFetch as unknown as typeof fetch;
 
     const client = new ContentHubClient(
@@ -117,11 +145,7 @@ describe('ContentHubClient', () => {
   });
 
   it('throws ContentHubClientError on non-OK', async () => {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: false,
-      status: 404,
-      text: async () => 'missing',
-    }) as unknown as typeof fetch;
+    global.fetch = jest.fn().mockResolvedValue(mockRes(404, 'missing')) as unknown as typeof fetch;
 
     const client = new ContentHubClient(testEnv, tokenStub('tok-1'));
     await expect(client.fetchReportPacket({ campaignId: 1 })).rejects.toThrow(ContentHubClientError);
@@ -130,12 +154,10 @@ describe('ContentHubClient', () => {
   it('on 401 drops the cached token and retries once with a fresh one', async () => {
     const mockFetch = jest
       .fn()
-      .mockResolvedValueOnce({ ok: false, status: 401, text: async () => 'expired' })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ campaignId: 3, sessions: [], surveyResponses: [], platformSlices: [], inputCompleteness: {} }),
-      });
+      .mockResolvedValueOnce(mockRes(401, 'expired'))
+      .mockResolvedValueOnce(
+        mockRes(200, { campaignId: 3, sessions: [], surveyResponses: [], platformSlices: [], inputCompleteness: {} }),
+      );
     global.fetch = mockFetch as unknown as typeof fetch;
     const tokens = tokenStub('stale', 'fresh');
 
@@ -149,13 +171,33 @@ describe('ContentHubClient', () => {
     expect(mockFetch.mock.calls[1][1].headers['X-Request-Id']).toBe(mockFetch.mock.calls[0][1].headers['X-Request-Id']);
   });
 
-  it('gives up after one retry when Hub still answers 401', async () => {
-    const mockFetch = jest.fn().mockResolvedValue({ ok: false, status: 401, text: async () => 'Missing bearer token' });
+  it('does not mint a second token when Hub says the Bearer header was missing', async () => {
+    const mockFetch = jest.fn().mockResolvedValue(mockRes(401, '{"detail":"Missing bearer token"}'));
+    global.fetch = mockFetch as unknown as typeof fetch;
+    const tokens = tokenStub('a', 'b');
+
+    await expect(new ContentHubClient(testEnv, tokens).fetchReportPacket({ campaignId: 1 })).rejects.toThrow(/401/);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(tokens.invalidate).not.toHaveBeenCalled();
+  });
+
+  it('re-attaches Authorization on a same-origin redirect', async () => {
+    const mockFetch = jest
+      .fn()
+      .mockResolvedValueOnce(
+        mockRes(307, '', { location: 'https://hub.test/api/campaigns/1/report-packet/' }),
+      )
+      .mockResolvedValueOnce(
+        mockRes(200, { campaignId: 1, sessions: [], surveyResponses: [], platformSlices: [], inputCompleteness: {} }),
+      );
     global.fetch = mockFetch as unknown as typeof fetch;
 
-    await expect(new ContentHubClient(testEnv, tokenStub('a', 'b')).fetchReportPacket({ campaignId: 1 })).rejects.toThrow(
-      /401/,
-    );
+    await new ContentHubClient(testEnv, tokenStub('tok-1')).fetchReportPacket({ campaignId: 1, requestId: 'R1' });
+
     expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch.mock.calls[1][0]).toBe('https://hub.test/api/campaigns/1/report-packet/');
+    expect(mockFetch.mock.calls[0][1].headers.Authorization).toBe('Bearer tok-1');
+    expect(mockFetch.mock.calls[1][1].headers.Authorization).toBe('Bearer tok-1');
+    expect(mockFetch.mock.calls[1][1].headers['X-Request-Id']).toBe('R1');
   });
 });
