@@ -20,6 +20,7 @@ import { ReportReadyNotifier } from './notify/report-ready.service';
 import { GenerationStateService } from './state/generation-state.service';
 import { cleanTranscriptText, splitPrerecordedLivestream } from './preprocess/transcript';
 import { TemplateStore } from './templates/template-store.service';
+import { reportSurveyResponses } from './preprocess/survey';
 
 export interface ReportRequest {
   requestId: string;
@@ -123,7 +124,9 @@ export class ReportGenerationOrchestrator {
       )
       .join('\n\n---\n\n');
 
-    const surveyContext = packet.surveyResponses.map((r) => JSON.stringify(r.answers)).join('\n');
+    const surveyContext = reportSurveyResponses(packet.surveyResponses)
+      .map((answers) => JSON.stringify(answers))
+      .join('\n');
     const platformContext = (packet.platformSlices ?? [])
       .map((slice) => `${slice.platform} ${slice.fetchDate} (${slice.status}): ${JSON.stringify(slice.rows)}`)
       .join('\n');
@@ -131,8 +134,9 @@ export class ReportGenerationOrchestrator {
 
     const result = await this.companion.generate({
       systemPrompt,
-      userContent: `Transcripts:\n${transcriptContext}\n\nSurvey responses:\n${surveyContext}\n\nPlatform metrics:\n${platformContext}\n\nHubSpot:\n${hubspotContext}`,
-      temperature: 0.2,
+      userContent: `Transcripts:\n${transcriptContext}\n\nPost-event feedback survey responses:\n${surveyContext}\n\nPlatform metrics:\n${platformContext}\n\nHubSpot:\n${hubspotContext}`,
+      // No temperature: Claude Sonnet 5 on Bedrock rejects it ("deprecated
+      // for this model"), and cht-companion omits it when unset.
     });
 
     const missingSources = Object.entries(packet.inputCompleteness)
