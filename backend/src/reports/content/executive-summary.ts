@@ -7,6 +7,8 @@
  * completeness) is filled in by code, never by the model.
  */
 
+import { jsonrepair } from 'jsonrepair';
+
 export interface Claim {
   /** Bolded lead sentence. */
   claim: string;
@@ -147,15 +149,46 @@ function themes(value: unknown): Theme[] {
  */
 export function parseNarrative(text: string): GeneratedNarrative {
   const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start === -1 || end <= start) {
+  if (start === -1) {
     throw new NarrativeParseError('model reply contains no JSON object');
   }
-  let raw: Record<string, unknown>;
-  try {
-    raw = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
-  } catch (err) {
-    throw new NarrativeParseError(`model reply is not valid JSON: ${err instanceof Error ? err.message : err}`);
+  const lastBrace = text.lastIndexOf('}');
+  const complete = lastBrace > start ? text.slice(start, lastBrace + 1) : null;
+  // A reply cut off at max tokens has no final brace: repair from the start
+  // to the end of the reply instead (minus a closing code fence).
+  const tail = text.slice(start).replace(/```\s*$/, '');
+
+  let raw: Record<string, unknown> | null = null;
+  let strictError = 'no closing brace';
+  if (complete) {
+    try {
+      raw = JSON.parse(complete) as Record<string, unknown>;
+    } catch (err) {
+      strictError = err instanceof Error ? err.message : String(err);
+    }
+  }
+  // Typical model slips: an unescaped " inside a quote, a trailing comma, a
+  // reply cut off at max tokens. Repair before giving up.
+  // The full reply first, so a cut-off reply keeps everything that arrived.
+  for (const candidate of raw ? [] : [tail, complete]) {
+    if (!candidate) continue;
+    try {
+      const repaired = JSON.parse(jsonrepair(candidate)) as unknown;
+      if (repaired && typeof repaired === 'object' && !Array.isArray(repaired)) {
+        raw = repaired as Record<string, unknown>;
+        break;
+      }
+    } catch {
+      // try the next candidate
+    }
+  }
+  if (!raw) {
+    const at = /position (\d+)/.exec(strictError);
+    const pos = at ? Number(at[1]) : 0;
+    const source = complete ?? tail;
+    throw new NarrativeParseError(
+      `model reply is not valid JSON: ${strictError}; near: ${source.slice(Math.max(0, pos - 120), pos + 120)}`,
+    );
   }
 
   return {

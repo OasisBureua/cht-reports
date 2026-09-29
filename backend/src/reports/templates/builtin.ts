@@ -16,7 +16,7 @@ RULES
 - Quotes: verbatim from a KOL in the transcript, under 35 words, attributed as "Dr. <Last name>". Fix only filler words and false starts.
 - Numbers: every subgroup or survey finding carries its base (n=X). Call a finding "directional" when n is under 10.
 - Voice: declarative, confident, analytical. Frame comparisons as shifts in practice or thinking. Prose over lists. End sections with a forward-looking point.
-- Plain text in every string: no markdown, no asterisks, no headings, no bullet characters.
+- Plain text in every string: no markdown, no asterisks, no headings, no bullet characters. Never put a double quote inside a string value; use single quotes (') for any quoted words.
 - Sections built from audience questions (hcpEngagementThemes, questionSummaries, audienceInsights) use only the Q&A part of the transcripts. If there is no Q&A, return empty arrays for all three.
 
 OUTPUT: a single JSON object, nothing before or after it, with exactly these keys:

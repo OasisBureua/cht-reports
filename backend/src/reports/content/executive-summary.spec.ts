@@ -25,9 +25,14 @@ describe('parseNarrative', () => {
     expect(n.conclusions).toEqual([{ claim: 'C', body: 'D', recommendation: null }]);
   });
 
+  it('repairs unescaped quotes inside strings and a reply cut off mid-list', () => {
+    const n = parseNarrative('{"quotes":[{"text":"It was "amazing" to see","speaker":"Dr. Yan"}],"objectives":["Review A","Review');
+    expect(n.quotes).toEqual([{ text: 'It was "amazing" to see', speaker: 'Dr. Yan' }]);
+    expect(n.objectives[0]).toBe('Review A');
+  });
+
   it('throws when there is no JSON object', () => {
     expect(() => parseNarrative('# Executive Summary\nplain markdown')).toThrow(NarrativeParseError);
-    expect(() => parseNarrative('{not json}')).toThrow(NarrativeParseError);
   });
 });
 
