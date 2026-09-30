@@ -16,6 +16,17 @@ import type { FetchReportPacketInput, ReportInputPacket } from './report-packet.
 
 export class ContentHubClientError extends Error {}
 
+/**
+ * Hub types windowStart/windowEnd as dates and answers 422
+ * (date_from_datetime_inexact) to a full ISO timestamp, which is what
+ * the platform writes on the job row. Send the UTC calendar date.
+ */
+export function toHubDate(value: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString().slice(0, 10);
+}
+
 export function contentHubApiBase(url: string): string {
   const origin = url.replace(/\/$/, '').replace(/\/api(\/(public|admin))?$/, '');
   return `${origin}/api`;
@@ -40,8 +51,8 @@ export class ContentHubClient {
 
   async fetchReportPacket(input: FetchReportPacketInput): Promise<ReportInputPacket> {
     const params = new URLSearchParams();
-    if (input.windowStart) params.set('windowStart', input.windowStart);
-    if (input.windowEnd) params.set('windowEnd', input.windowEnd);
+    if (input.windowStart) params.set('windowStart', toHubDate(input.windowStart));
+    if (input.windowEnd) params.set('windowEnd', toHubDate(input.windowEnd));
     for (const source of input.sources ?? []) {
       params.append('sources', source);
     }
