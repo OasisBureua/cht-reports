@@ -1,118 +1,99 @@
-import { ReportDocService, ExecutiveSummaryContent } from './report-doc.service';
+import { ReportDocService, SECTION_IDS } from './report-doc.service';
+import type { ExecutiveSummaryContent, GeneratedNarrative } from '../content/executive-summary';
+
+const narrative: GeneratedNarrative = {
+  programTitle: 'HER2-Low Update',
+  format: 'pre_recorded_and_live',
+  executiveSummary: [{ claim: 'First-line choice now carries the most weight.', body: 'Faculty converged on it.' }],
+  objectives: ['Review DESTINY-Breast06 outcomes'],
+  kols: [{ name: 'Dr. VK Gadi', affiliation: 'University of Illinois Cancer Center' }],
+  overview: ['A live podcast conversation.'],
+  keyTakeaways: [{ claim: 'Testing is shifting.', body: 'Ultra-low is flagged routinely.' }],
+  quotes: [{ text: 'It was surprising.', speaker: 'Dr. Yan' }],
+  conversationSummary: [],
+  hcpEngagementThemes: [{ theme: 'Re-testing', detail: 'HCPs asked when to re-biopsy.' }],
+  questionSummaries: [],
+  audienceInsights: [{ label: 'Highest curiosity', body: 'ADC sequencing.' }],
+  conclusions: [{ claim: 'Make toxicity operational.', body: 'Comfort rises with playbooks.', recommendation: 'Ship a one-page algorithm.' }],
+};
+
+const content: ExecutiveSummaryContent = {
+  title: 'Executive Summary: HER2-Low Update',
+  campaignName: '[TEST] Podcast 2',
+  variant: 'webinar_only',
+  sessions: [{ title: 'Podcast 2', kind: 'webinar', date: '2026-05-01T17:00:00Z' }],
+  narrative,
+  surveyCharts: [
+    { question: 'Practice setting', responses: 4, multiSelect: false, options: [{ label: 'Community', count: 3 }, { label: 'Academic', count: 1 }] },
+  ],
+  attendees: null,
+  inputCompletenessNote: 'The following sources were unavailable: hubspot: missing.',
+};
 
 describe('ReportDocService', () => {
-  let service: ReportDocService;
+  const service = new ReportDocService();
 
-  beforeEach(() => {
-    service = new ReportDocService();
-  });
-
-  const baseContent: ExecutiveSummaryContent = {
-    title: 'Executive Summary: Campaign 42',
-    variant: 'webinar_only',
-    sections: [{ heading: 'Overview', paragraphs: ['First paragraph.', 'Second paragraph.'] }],
-    inputCompletenessNote: null,
-  };
-
-  it('renders a well-formed HTML document', async () => {
-    const html = await service.renderExecutiveSummary(baseContent);
-
+  it('renders a full document with the title and cover', async () => {
+    const html = await service.renderExecutiveSummary(content);
     expect(html).toContain('<!DOCTYPE html>');
-    expect(html).toContain('<html lang="en">');
-    expect(html).toContain('</html>');
+    expect(html).toContain('<title>Executive Summary: HER2-Low Update</title>');
+    expect(html).toContain('<h1>HER2-Low Update</h1>');
+    expect(html).toContain('<dd>Dr. VK Gadi</dd>');
+    expect(html).toContain('May 1, 2026');
+    expect(html).toContain('Pre-recorded conversation with live Q&amp;A');
   });
 
-  it('includes the title in both the head and body', async () => {
-    const html = await service.renderExecutiveSummary(baseContent);
-
-    expect(html).toContain('<title>Executive Summary: Campaign 42</title>');
-    expect(html).toContain('<h1>Executive Summary: Campaign 42</h1>');
-  });
-
-  it('renders each section heading and its paragraphs', async () => {
-    const html = await service.renderExecutiveSummary(baseContent);
-
-    expect(html).toContain('<h2>Overview</h2>');
-    expect(html).toContain('<p>First paragraph.</p>');
-    expect(html).toContain('<p>Second paragraph.</p>');
-  });
-
-  it('renders multiple sections in order', async () => {
-    const content: ExecutiveSummaryContent = {
-      ...baseContent,
-      sections: [
-        { heading: 'First', paragraphs: ['A.'] },
-        { heading: 'Second', paragraphs: ['B.'] },
-      ],
-    };
-
+  it('renders sections in CPR-18 order and leaves out empty ones', async () => {
     const html = await service.renderExecutiveSummary(content);
-    const firstIndex = html.indexOf('First');
-    const secondIndex = html.indexOf('Second');
-
-    expect(firstIndex).toBeGreaterThan(-1);
-    expect(secondIndex).toBeGreaterThan(firstIndex);
+    const order = ['Executive Summary</h2>', 'Program Objectives', 'Key Opinion Leaders', 'Key Takeaways', 'Specific Comments', 'Post Webinar Survey Results', 'Strategic Takeaways'];
+    const positions = order.map((t) => html.indexOf(t));
+    expect(positions.every((p) => p > 0)).toBe(true);
+    expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+    expect(html).not.toContain('<h2>Summary of Conversation</h2>');
+    expect(html).not.toContain('<h2>Attendees</h2>');
   });
 
-  it('omits the input completeness section when there is no note', async () => {
-    const html = await service.renderExecutiveSummary(baseContent);
-
-    expect(html).not.toContain('Input Completeness');
-  });
-
-  it('renders the input completeness note when present', async () => {
-    const content: ExecutiveSummaryContent = {
-      ...baseContent,
-      inputCompletenessNote: 'survey_responses: missing',
-    };
-
+  it('names the left-out sections in the input-completeness note', async () => {
     const html = await service.renderExecutiveSummary(content);
-
-    expect(html).toContain('Input Completeness');
-    expect(html).toContain('survey_responses: missing');
+    expect(html).toContain('hubspot: missing');
+    expect(html).toContain('Not included for lack of input data: Summary of Conversation, Question Summaries, Attendees.');
   });
 
-  it('escapes HTML special characters in title, headings, and paragraphs', async () => {
-    const content: ExecutiveSummaryContent = {
-      title: 'Report <2026> & "Special"',
-      variant: 'pre_record_only',
-      sections: [{ heading: 'A & B', paragraphs: ['5 < 10 and 10 > 5'] }],
-      inputCompletenessNote: "It's <complicated>",
-    };
-
+  it('renders quotes, recommendations and a survey chart', async () => {
     const html = await service.renderExecutiveSummary(content);
-
-    expect(html).not.toContain('<2026>');
-    expect(html).toContain('&lt;2026&gt;');
-    expect(html).toContain('&amp;');
-    expect(html).toContain('5 &lt; 10 and 10 &gt; 5');
-    expect(html).toContain('&#39;s &lt;complicated&gt;');
+    expect(html).toContain('<p>“It was surprising.”</p><cite>Dr. Yan</cite>');
+    expect(html).toContain('<strong>Strategic recommendation:</strong> Ship a one-page algorithm.');
+    expect(html).toContain('1. Practice setting');
+    expect(html).toContain('4 responses');
+    expect(html).toContain('75% (3)');
   });
 
-  it('fills a custom HTML template (CPR-25) instead of the built-in one', async () => {
+  it('renders only the requested sections', async () => {
+    const html = await service.renderExecutiveSummary(content, { sections: ['keyTakeaways'] });
+    expect(html).toContain('<h2>Key Takeaways</h2>');
+    expect(html).not.toContain('<h2>Program Objectives</h2>');
+  });
+
+  it('escapes model text', async () => {
+    const html = await service.renderExecutiveSummary({
+      ...content,
+      narrative: { ...narrative, overview: ['<script>alert(1)</script> & more'] },
+    });
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt; &amp; more');
+  });
+
+  it('fills a custom template and keeps $ in content literal', async () => {
     const html = await service.renderExecutiveSummary(
-      baseContent,
-      '<article data-v="2"><h1>{{title}}</h1>{{sections}}{{inputCompleteness}}</article>',
+      { ...content, narrative: { ...narrative, overview: ['Costs $1 and $& stays'] } },
+      { htmlTemplate: '<article>{{cover}}{{sections}}{{inputCompleteness}}{{unknown}}</article>' },
     );
-
-    expect(html.startsWith('<article data-v="2">')).toBe(true);
-    expect(html).toContain('<h1>Executive Summary: Campaign 42</h1>');
-    expect(html).toContain('<h2>Overview</h2>');
-    expect(html).not.toContain('<!DOCTYPE html>');
+    expect(html.startsWith('<article>')).toBe(true);
+    expect(html).toContain('Costs $1 and $&amp; stays');
+    expect(html).toContain('{{unknown}}');
   });
 
-  it('does not re-scan inserted content for placeholders', async () => {
-    const html = await service.renderExecutiveSummary(
-      { ...baseContent, sections: [{ heading: 'H', paragraphs: ['literal {{title}} and $& here'] }] },
-      '<main>{{sections}}</main>',
-    );
-
-    expect(html).toContain('literal {{title}} and $&amp; here');
-  });
-
-  it('leaves unknown placeholders untouched', async () => {
-    const html = await service.renderExecutiveSummary(baseContent, '<p>{{footer}}</p>{{title}}');
-
-    expect(html).toBe('<p>{{footer}}</p>Executive Summary: Campaign 42');
+  it('exposes all 13 CPR-18 sections', () => {
+    expect(SECTION_IDS).toHaveLength(13);
   });
 });

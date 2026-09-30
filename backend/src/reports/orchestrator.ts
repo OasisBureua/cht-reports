@@ -14,12 +14,15 @@ import { Injectable, Logger } from '@nestjs/common';
 import { CompanionClient } from '../companion/companion.client';
 import { ContentHubClient } from './packet/content-hub.client';
 import type { ReportInputPacket } from './packet/report-packet.types';
-import { ReportDocService, ExecutiveSummaryContent } from './render/report-doc.service';
+import { ReportDocService } from './render/report-doc.service';
+import { parseNarrative, type ExecutiveSummaryContent } from './content/executive-summary';
+import { buildSurveyCharts } from './content/survey-charts';
 import { ReportStorageService } from './storage/report-storage.service';
 import { ReportReadyNotifier } from './notify/report-ready.service';
 import { GenerationStateService } from './state/generation-state.service';
 import { cleanTranscriptText, splitPrerecordedLivestream } from './preprocess/transcript';
 import { TemplateStore } from './templates/template-store.service';
+import { reportSurveyResponses } from './preprocess/survey';
 
 export interface ReportRequest {
   requestId: string;
@@ -70,13 +73,14 @@ export class ReportGenerationOrchestrator {
       const { template, note: templateNote } = await this.templates.load(packet.template);
 
       await this.state.markStatus(requestId, 'generating');
-      const content = await this.generateContent(packet, template.systemPrompt, templateNote);
+      if (templateNote) this.logger.warn(`Request ${requestId}: ${templateNote}`);
+      const content = await this.generateContent(packet, template.systemPrompt);
 
       await this.state.markStatus(requestId, 'rendering');
-      const html = await this.reportDoc.renderExecutiveSummary(content, template.html);
+      const html = await this.reportDoc.renderExecutiveSummary(content, { htmlTemplate: template.html });
 
       await this.state.markStatus(requestId, 'uploading');
-      const s3Key = await this.storage.uploadReport(String(campaignId), requestId, html);
+      const s3Key = await this.storage.uploadReport(String(campaignId), requestId, html, content);
 
       await this.notifier.notify({ requestId, campaignId: String(campaignId), s3Key });
       await this.state.markComplete(requestId, s3Key);
@@ -96,11 +100,7 @@ export class ReportGenerationOrchestrator {
    * pre-record/livestream split happen here. Hub already ETL'd the warehouse
    * copy; this path never queries Aurora or cht-platform-tool.
    */
-  private async generateContent(
-    packet: ReportInputPacket,
-    systemPrompt: string,
-    templateNote: string | null,
-  ): Promise<ExecutiveSummaryContent> {
+  private async generateContent(packet: ReportInputPacket, systemPrompt: string): Promise<ExecutiveSummaryContent> {
     const cleanedSessions = packet.sessions.map((session) => {
       const cleaned = cleanTranscriptText(session.transcriptText ?? '');
       const { prerecorded, livestream } = splitPrerecordedLivestream(cleaned);
@@ -119,31 +119,55 @@ export class ReportGenerationOrchestrator {
     const transcriptContext = cleanedSessions
       .map(
         (s) =>
-          `Session: ${s.title ?? s.platformToolProgramId ?? 'untitled'}\n${s.prerecorded}${s.livestream ? `\n\nQ&A:\n${s.livestream}` : ''}`,
+          `Session: ${s.title ?? s.platformToolProgramId ?? 'untitled'}${s.sessionDate ? ` (${s.sessionDate})` : ''}\n${s.prerecorded}${
+            s.livestream ? `\n\nQ&A:\n${s.livestream}` : ''
+          }`,
       )
       .join('\n\n---\n\n');
 
-    const surveyContext = packet.surveyResponses.map((r) => JSON.stringify(r.answers)).join('\n');
+    const surveyAnswers = reportSurveyResponses(packet.surveyResponses);
+    const surveyContext = surveyAnswers.map((answers) => JSON.stringify(answers)).join('\n');
     const platformContext = (packet.platformSlices ?? [])
       .map((slice) => `${slice.platform} ${slice.fetchDate} (${slice.status}): ${JSON.stringify(slice.rows)}`)
       .join('\n');
     const hubspotContext = packet.hubspotRawData ? JSON.stringify(packet.hubspotRawData) : '';
 
+    const userContent = fitToLimit(
+      [
+        `Campaign: ${packet.campaignName ?? `Campaign ${packet.campaignId}`}`,
+        `Post-event feedback survey responses (n=${surveyAnswers.length}):\n${surveyContext || 'none'}`,
+        `Platform metrics:\n${platformContext || 'none'}`,
+        `HubSpot:\n${hubspotContext || 'none'}`,
+      ],
+      `Transcripts:\n${transcriptContext || 'none'}`,
+    );
+
     const result = await this.companion.generate({
       systemPrompt,
-      userContent: `Transcripts:\n${transcriptContext}\n\nSurvey responses:\n${surveyContext}\n\nPlatform metrics:\n${platformContext}\n\nHubSpot:\n${hubspotContext}`,
-      temperature: 0.2,
+      userContent,
+      maxTokens: 8192,
+      // No temperature: Claude Sonnet 5 on Bedrock rejects it ("deprecated
+      // for this model"), and cht-companion omits it when unset.
     });
+    if (result.finishReason === 'truncated') {
+      this.logger.warn(`Generation hit max tokens for campaign ${packet.campaignId}; parsing what arrived`);
+    }
+    const narrative = parseNarrative(result.text);
 
+    // Template availability is our concern, not the client's: keep it out of
+    // the report's input-completeness note.
     const missingSources = Object.entries(packet.inputCompleteness)
-      .filter(([, v]) => v.status !== 'ok')
+      .filter(([source, v]) => source !== 'template' && v.status !== 'ok')
       .map(([source, v]) => `${source}: ${v.status}`);
-    if (templateNote) missingSources.push(templateNote);
 
     return {
-      title: `Executive Summary: ${packet.campaignName ?? `Campaign ${packet.campaignId}`}`,
+      title: `Executive Summary: ${narrative.programTitle ?? packet.campaignName ?? `Campaign ${packet.campaignId}`}`,
+      campaignName: packet.campaignName ?? `Campaign ${packet.campaignId}`,
       variant,
-      sections: parseGeneratedSections(result.text),
+      sessions: packet.sessions.map((s) => ({ title: s.title, kind: s.kind, date: s.sessionDate })),
+      narrative,
+      surveyCharts: buildSurveyCharts(surveyAnswers),
+      attendees: null,
       inputCompletenessNote:
         missingSources.length > 0
           ? `The following sources were unavailable or incomplete when this report was generated: ${missingSources.join(', ')}.`
@@ -152,14 +176,17 @@ export class ReportGenerationOrchestrator {
   }
 }
 
+/** cht-companion /generate caps user_content at 100,000 characters. */
+export const USER_CONTENT_LIMIT = 100_000;
+
 /**
- * Placeholder section parser. Real output-structure parsing (headline/body
- * extraction, refusal-detection guards) is a real piece of work the prior
- * MediaHub pipeline solved (pipeline.py's _extract_section /
- * _filter_refusal_items) and is not ported yet. cht-companion's /generate
- * returns real text; this function does not do anything with its
- * structure beyond wrapping it in one section.
+ * Join the context blocks, trimming only the transcripts (the long part)
+ * to stay under the companion limit. The cut is marked so the model knows.
  */
-function parseGeneratedSections(text: string): ExecutiveSummaryContent['sections'] {
-  return [{ heading: 'Executive Summary', paragraphs: [text] }];
+export function fitToLimit(headBlocks: string[], transcripts: string, limit = USER_CONTENT_LIMIT): string {
+  const head = headBlocks.join('\n\n');
+  const marker = '\n[Transcript truncated to fit the input limit.]';
+  const room = limit - head.length - 2;
+  const body = transcripts.length <= room ? transcripts : `${transcripts.slice(0, Math.max(0, room - marker.length))}${marker}`;
+  return `${head}\n\n${body}`;
 }

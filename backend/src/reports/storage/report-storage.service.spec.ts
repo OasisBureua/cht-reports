@@ -37,12 +37,40 @@ describe('ReportStorageService', () => {
 
     await service().uploadReport('9', 'req-1', '<html><body>hi</body></html>');
 
-    const call = s3Mock.commandCalls(PutObjectCommand)[0];
+    const call = s3Mock.commandCalls(PutObjectCommand).find((c) => c.args[0].input.Key?.endsWith('.pdf'))!;
     expect(Buffer.isBuffer(call.args[0].input.Body)).toBe(true);
     expect(call.args[0].input.Body).toEqual(PDF_BYTES);
     expect(call.args[0].input.ContentType).toBe('application/pdf');
     expect(call.args[0].input.Bucket).toBe(testEnv.reportsBucket);
     expect(call.args[0].input.Key).toBe('reports/9/req-1/v1.pdf');
+  });
+
+  it('stores the HTML preview and content JSON next to the PDF, PDF last', async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+
+    await service().uploadReport('9', 'req-1', '<html>preview</html>', { title: 'T' });
+
+    const calls = s3Mock.commandCalls(PutObjectCommand).map((c) => c.args[0].input);
+    expect(calls.map((i) => i.Key)).toEqual(
+      expect.arrayContaining(['reports/9/req-1/v1.html', 'reports/9/req-1/v1.json', 'reports/9/req-1/v1.pdf']),
+    );
+    expect(calls[calls.length - 1].Key).toBe('reports/9/req-1/v1.pdf');
+    const html = calls.find((i) => i.Key === 'reports/9/req-1/v1.html')!;
+    expect(html.Body).toBe('<html>preview</html>');
+    expect(html.ContentType).toBe('text/html; charset=utf-8');
+    const json = calls.find((i) => i.Key === 'reports/9/req-1/v1.json')!;
+    expect(JSON.parse(json.Body as string)).toEqual({ title: 'T' });
+  });
+
+  it('skips the JSON when no content is passed', async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+
+    await service().uploadReport('9', 'req-1', '<html></html>');
+
+    expect(s3Mock.commandCalls(PutObjectCommand).map((c) => c.args[0].input.Key)).toEqual([
+      'reports/9/req-1/v1.html',
+      'reports/9/req-1/v1.pdf',
+    ]);
   });
 
   it('rejects a print that is not a PDF header', async () => {

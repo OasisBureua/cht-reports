@@ -22,6 +22,7 @@
     "@nestjs/core": "^11.1.23",
     "@nestjs/platform-express": "^11.1.23",
     "@nestjs/terminus": "^11.1.1",
+    "jsonrepair": "^3.15.0",
     "puppeteer-core": "^25.12.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"

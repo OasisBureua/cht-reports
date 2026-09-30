@@ -1,4 +1,10 @@
-import { ContentHubClient, ContentHubClientError, contentHubApiBase, sameOriginRedirect } from './content-hub.client';
+import {
+  ContentHubClient,
+  ContentHubClientError,
+  contentHubApiBase,
+  sameOriginRedirect,
+  toHubDate,
+} from './content-hub.client';
 import { testEnv } from '../../config/test-env';
 import type { CognitoM2mTokenService } from '../../auth/cognito-m2m-token.service';
 
@@ -31,6 +37,21 @@ describe('contentHubApiBase', () => {
     'https://hub.test/api/admin/',
   ])('normalizes %s to the /api root', (url) => {
     expect(contentHubApiBase(url)).toBe('https://hub.test/api');
+  });
+});
+
+describe('toHubDate', () => {
+  it('keeps a plain date', () => {
+    expect(toHubDate('2026-08-29')).toBe('2026-08-29');
+  });
+
+  it('turns an ISO timestamp into its UTC date', () => {
+    expect(toHubDate('2026-08-29T21:43:20.275Z')).toBe('2026-08-29');
+    expect(toHubDate('2026-08-29T23:30:00-04:00')).toBe('2026-08-30');
+  });
+
+  it('passes an unparseable value through so Hub reports it', () => {
+    expect(toHubDate('last-month')).toBe('last-month');
   });
 });
 
@@ -85,6 +106,25 @@ describe('ContentHubClient', () => {
     expect(mockFetch.mock.calls[0][1].headers.Authorization).toBe('Bearer tok-1');
     expect(mockFetch.mock.calls[0][1].headers['X-API-Key']).toBeUndefined();
     expect(mockFetch.mock.calls[0][1].headers['X-Request-Id']).toEqual(expect.any(String));
+  });
+
+  it('sends a timestamp window as dates (Hub 422s on datetimes)', async () => {
+    const mockFetch = jest.fn().mockResolvedValue(
+      mockRes(200, { campaignId: 6, sessions: [], surveyResponses: [], platformSlices: [], inputCompleteness: {} }),
+    );
+    global.fetch = mockFetch as unknown as typeof fetch;
+
+    const client = new ContentHubClient({ ...testEnv, contentHubBaseUrl: 'https://hub.test' }, tokenStub('tok-1'));
+    await client.fetchReportPacket({
+      campaignId: 6,
+      windowStart: '2026-08-29T21:43:20.275Z',
+      windowEnd: '2026-09-28T21:43:20.275Z',
+    });
+
+    const called = mockFetch.mock.calls[0][0] as string;
+    expect(called).toContain('windowStart=2026-08-29&');
+    expect(called).toContain('windowEnd=2026-09-28');
+    expect(called).not.toContain('T21');
   });
 
   it('rewrites an /api/public CONTENTHUB_BASE_URL onto the packet path', async () => {
