@@ -29,6 +29,8 @@ export interface AppEnv {
   reportReadyTopicArn: string;
   generationStateTable: string;
   maxGenerationAttempts: number;
+  /** Output-token budget per report generation (thinking tokens count toward it). */
+  reportMaxOutputTokens: number;
   maxEditAttempts: number;
   bedrockModelId: string;
   companionServiceConnectUrl: string;
@@ -53,6 +55,7 @@ export function loadEnv(): AppEnv {
     reportReadyTopicArn: required('REPORT_READY_TOPIC_ARN'),
     generationStateTable: required('GENERATION_STATE_TABLE'),
     maxGenerationAttempts: Number(process.env.MAX_GENERATION_ATTEMPTS ?? 5),
+    reportMaxOutputTokens: Number(process.env.REPORT_MAX_OUTPUT_TOKENS ?? 16000),
     maxEditAttempts: Number(process.env.MAX_EDIT_ATTEMPTS ?? 3),
     bedrockModelId: process.env.BEDROCK_MODEL_ID ?? 'us.anthropic.claude-sonnet-5',
     companionServiceConnectUrl: process.env.COMPANION_SERVICE_CONNECT_URL ?? 'http://cht-companion:8080',

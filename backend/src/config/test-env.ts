@@ -17,6 +17,7 @@ export const testEnv: AppEnv = {
   reportReadyTopicArn: 'arn:aws:sns:test',
   generationStateTable: 'test-generation-state',
   maxGenerationAttempts: 5,
+  reportMaxOutputTokens: 16000,
   maxEditAttempts: 3,
   bedrockModelId: 'us.anthropic.claude-sonnet-5',
   companionServiceConnectUrl: 'http://cht-companion:8080',
