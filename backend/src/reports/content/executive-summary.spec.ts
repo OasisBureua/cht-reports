@@ -1,6 +1,6 @@
 import { NarrativeParseError, parseNarrative } from './executive-summary';
 import { buildSurveyCharts, questionLabel } from './survey-charts';
-import { fitToLimit } from '../orchestrator';
+import { estimateCostUsd, fitToLimit } from '../orchestrator';
 
 describe('parseNarrative', () => {
   it('reads a fenced JSON reply and fills missing keys with empty lists', () => {
@@ -78,5 +78,15 @@ describe('fitToLimit', () => {
     expect(out.length).toBeLessThanOrEqual(120);
     expect(out.startsWith('HEAD\n\n')).toBe(true);
     expect(out).toContain('[Transcript truncated to fit the input limit.]');
+  });
+});
+
+describe('estimateCostUsd', () => {
+  it('prices a run at Claude Sonnet 5 list rates', () => {
+    expect(estimateCostUsd({ tokensInput: 23571, tokensOutput: 8192 })).toBe('~$0.129');
+  });
+
+  it('says unknown without usage', () => {
+    expect(estimateCostUsd({})).toBe('cost unknown');
   });
 });

@@ -24,6 +24,17 @@ describe('ReportStorageService', () => {
     s3Mock.reset();
   });
 
+  it('stores the raw model reply as internal text next to the report', async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+
+    const key = await service().saveModelReply('9', 'req-1', '{"partial":');
+
+    expect(key).toBe('reports/9/req-1/v1.model.txt');
+    const input = s3Mock.commandCalls(PutObjectCommand)[0].args[0].input;
+    expect(input.Body).toBe('{"partial":');
+    expect(input.ContentType).toBe('text/plain; charset=utf-8');
+  });
+
   it('uploads a printed PDF under reports/{campaignId}/{reportId}/v1.pdf', async () => {
     s3Mock.on(PutObjectCommand).resolves({});
 

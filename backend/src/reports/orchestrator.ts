@@ -74,7 +74,7 @@ export class ReportGenerationOrchestrator {
 
       await this.state.markStatus(requestId, 'generating');
       if (templateNote) this.logger.warn(`Request ${requestId}: ${templateNote}`);
-      const content = await this.generateContent(packet, template.systemPrompt);
+      const content = await this.generateContent(packet, template.systemPrompt, requestId);
 
       await this.state.markStatus(requestId, 'rendering');
       const html = await this.reportDoc.renderExecutiveSummary(content, { htmlTemplate: template.html });
@@ -100,7 +100,11 @@ export class ReportGenerationOrchestrator {
    * pre-record/livestream split happen here. Hub already ETL'd the warehouse
    * copy; this path never queries Aurora or cht-platform-tool.
    */
-  private async generateContent(packet: ReportInputPacket, systemPrompt: string): Promise<ExecutiveSummaryContent> {
+  private async generateContent(
+    packet: ReportInputPacket,
+    systemPrompt: string,
+    requestId: string,
+  ): Promise<ExecutiveSummaryContent> {
     const cleanedSessions = packet.sessions.map((session) => {
       const cleaned = cleanTranscriptText(session.transcriptText ?? '');
       const { prerecorded, livestream } = splitPrerecordedLivestream(cleaned);
@@ -142,15 +146,18 @@ export class ReportGenerationOrchestrator {
       `Transcripts:\n${transcriptContext || 'none'}`,
     );
 
-    const result = await this.companion.generate({
-      systemPrompt,
-      userContent,
-      maxTokens: 8192,
-      // No temperature: Claude Sonnet 5 on Bedrock rejects it ("deprecated
-      // for this model"), and cht-companion omits it when unset.
-    });
+    // Output budget comes from REPORT_MAX_OUTPUT_TOKENS (CompanionClient
+    // default). No temperature: Claude Sonnet 5 on Bedrock rejects it.
+    const result = await this.companion.generate({ systemPrompt, userContent });
+    await this.storage.saveModelReply(String(packet.campaignId), requestId, result.text);
+    this.logger.log(
+      `Generation for campaign ${packet.campaignId}: ${result.finishReason}, tokens in=${result.tokensInput ?? '?'} out=${result.tokensOutput ?? '?'}, ${estimateCostUsd(result)}`,
+    );
     if (result.finishReason === 'truncated') {
-      this.logger.warn(`Generation hit max tokens for campaign ${packet.campaignId}; parsing what arrived`);
+      // Never publish a cut-off report: fail this attempt so the job retries.
+      throw new ReportGenerationTruncatedError(
+        `Generation hit the output token budget (${result.tokensOutput ?? '?'} tokens) for campaign ${packet.campaignId}`,
+      );
     }
     const narrative = parseNarrative(result.text);
 
@@ -189,4 +196,13 @@ export function fitToLimit(headBlocks: string[], transcripts: string, limit = US
   const room = limit - head.length - 2;
   const body = transcripts.length <= room ? transcripts : `${transcripts.slice(0, Math.max(0, room - marker.length))}${marker}`;
   return `${head}\n\n${body}`;
+}
+
+export class ReportGenerationTruncatedError extends Error {}
+
+/** Claude Sonnet 5 list price: $2 per million input tokens, $10 per million output. */
+export function estimateCostUsd(result: { tokensInput?: number; tokensOutput?: number }): string {
+  if (result.tokensInput === undefined || result.tokensOutput === undefined) return 'cost unknown';
+  const usd = (result.tokensInput * 2 + result.tokensOutput * 10) / 1_000_000;
+  return `~$${usd.toFixed(3)}`;
 }

@@ -42,4 +42,17 @@ export class ReportStorageService {
 
     return key;
   }
+
+  /**
+   * Keep the model's raw reply next to the report (internal: Platform only
+   * streams .pdf keys). Written even when generation fails, so a truncated
+   * or unparseable reply can be inspected.
+   */
+  async saveModelReply(campaignId: string, requestId: string, text: string): Promise<string> {
+    const key = `reports/${campaignId}/${requestId}/v1.model.txt`;
+    await this.aws.s3.send(
+      new PutObjectCommand({ Bucket: this.env.reportsBucket, Key: key, Body: text, ContentType: 'text/plain; charset=utf-8' }),
+    );
+    return key;
+  }
 }

@@ -18,7 +18,7 @@ describe('CompanionClient', () => {
     const client = new CompanionClient(testEnv);
     const result = await client.generate({ systemPrompt: 'System', userContent: 'User content' });
 
-    expect(result).toEqual({ text: 'Generated text.', finishReason: 'complete' });
+    expect(result).toEqual({ text: 'Generated text.', finishReason: 'complete', tokensInput: undefined, tokensOutput: undefined });
 
     expect(mockFetch).toHaveBeenCalledWith(
       'http://cht-companion:8080/generate',
@@ -36,9 +36,28 @@ describe('CompanionClient', () => {
     expect(body).toEqual({
       system_prompt: 'System',
       user_content: 'User content',
-      max_tokens: 4096,
+      max_tokens: 16000,
       temperature: undefined,
     });
+  });
+
+  it('uses REPORT_MAX_OUTPUT_TOKENS by default and maps usage from the response', async () => {
+    const mockFetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        text: 'T',
+        finish_reason: 'truncated',
+        request_id: 'req-2',
+        usage: { input_tokens: 23571, output_tokens: 8192 },
+      }),
+    });
+    global.fetch = mockFetch as unknown as typeof fetch;
+
+    const client = new CompanionClient({ ...testEnv, reportMaxOutputTokens: 24000 });
+    const result = await client.generate({ systemPrompt: 'S', userContent: 'U' });
+
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body).max_tokens).toBe(24000);
+    expect(result).toEqual({ text: 'T', finishReason: 'truncated', tokensInput: 23571, tokensOutput: 8192 });
   });
 
   it('throws CompanionGenerationError with the companion error message on a non-OK response', async () => {

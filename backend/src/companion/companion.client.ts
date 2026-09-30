@@ -32,6 +32,7 @@ interface CompanionGenerateResponse {
   text: string;
   finish_reason: GenerateResult['finishReason'];
   request_id: string;
+  usage?: { input_tokens?: number | null; output_tokens?: number | null } | null;
 }
 
 interface CompanionErrorResponse {
@@ -57,7 +58,7 @@ export class CompanionClient {
       body: JSON.stringify({
         system_prompt: request.systemPrompt,
         user_content: request.userContent,
-        max_tokens: request.maxTokens ?? 4096,
+        max_tokens: request.maxTokens ?? this.env.reportMaxOutputTokens,
         temperature: request.temperature,
       }),
     });
@@ -70,6 +71,11 @@ export class CompanionClient {
     }
 
     const body = (await response.json()) as CompanionGenerateResponse;
-    return { text: body.text, finishReason: body.finish_reason };
+    return {
+      text: body.text,
+      finishReason: body.finish_reason,
+      tokensInput: body.usage?.input_tokens ?? undefined,
+      tokensOutput: body.usage?.output_tokens ?? undefined,
+    };
   }
 }
