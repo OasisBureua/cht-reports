@@ -45,8 +45,12 @@ export interface Conclusion {
 }
 
 /** What the model returns. Every list may be empty when the input can't support it. */
+export type ProgramFormat = 'pre_recorded' | 'live_webinar' | 'pre_recorded_and_live';
+
 export interface GeneratedNarrative {
   programTitle: string | null;
+  /** What the recording shows; overrides the transcript-marker heuristic. */
+  format: ProgramFormat | null;
   executiveSummary: Claim[];
   objectives: string[];
   kols: Kol[];
@@ -95,8 +99,11 @@ export interface ExecutiveSummaryContent {
 
 export class NarrativeParseError extends Error {}
 
+const FORMATS = new Set<ProgramFormat>(['pre_recorded', 'live_webinar', 'pre_recorded_and_live']);
+
 const EMPTY: GeneratedNarrative = {
   programTitle: null,
+  format: null,
   executiveSummary: [],
   objectives: [],
   kols: [],
@@ -194,6 +201,7 @@ export function parseNarrative(text: string): GeneratedNarrative {
   return {
     ...EMPTY,
     programTitle: str(raw.programTitle),
+    format: FORMATS.has(raw.format as ProgramFormat) ? (raw.format as ProgramFormat) : null,
     executiveSummary: claims(raw.executiveSummary),
     objectives: strings(raw.objectives),
     kols: list(raw.kols, (o) => {

@@ -3,6 +3,7 @@ import type { ExecutiveSummaryContent, GeneratedNarrative } from '../content/exe
 
 const narrative: GeneratedNarrative = {
   programTitle: 'HER2-Low Update',
+  format: 'pre_recorded_and_live',
   executiveSummary: [{ claim: 'First-line choice now carries the most weight.', body: 'Faculty converged on it.' }],
   objectives: ['Review DESTINY-Breast06 outcomes'],
   kols: [{ name: 'Dr. VK Gadi', affiliation: 'University of Illinois Cancer Center' }],
@@ -39,6 +40,7 @@ describe('ReportDocService', () => {
     expect(html).toContain('<h1>HER2-Low Update</h1>');
     expect(html).toContain('<dd>Dr. VK Gadi</dd>');
     expect(html).toContain('May 1, 2026');
+    expect(html).toContain('Pre-recorded conversation with live Q&amp;A');
   });
 
   it('renders sections in CPR-18 order and leaves out empty ones', async () => {

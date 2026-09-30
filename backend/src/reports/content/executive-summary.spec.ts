@@ -9,7 +9,13 @@ describe('parseNarrative', () => {
     expect(n.objectives).toEqual(['Review X']);
     expect(n.kols).toEqual([{ name: 'Dr. A', affiliation: null }]);
     expect(n.keyTakeaways).toEqual([]);
+    expect(n.format).toBeNull();
     expect(n.conclusions).toEqual([]);
+  });
+
+  it('accepts only known formats', () => {
+    expect(parseNarrative('{"format":"live_webinar"}').format).toBe('live_webinar');
+    expect(parseNarrative('{"format":"podcast"}').format).toBeNull();
   });
 
   it('drops malformed items instead of failing', () => {

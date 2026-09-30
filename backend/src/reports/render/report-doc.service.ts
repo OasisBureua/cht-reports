@@ -93,10 +93,18 @@ function renderCover(content: ExecutiveSummaryContent): string {
   const dates = [...new Set(content.sessions.map((s) => s.date).filter((d): d is string => Boolean(d)))]
     .map(formatDate)
     .join(' · ');
+  const variant =
+    n.format === 'pre_recorded_and_live'
+      ? 'pre_record_and_webinar'
+      : n.format === 'live_webinar'
+        ? 'webinar_only'
+        : n.format === 'pre_recorded'
+          ? 'pre_record_only'
+          : content.variant;
   const format =
-    content.variant === 'pre_record_and_webinar'
-      ? 'Pre-recorded conversation and live webinar'
-      : content.variant === 'webinar_only'
+    variant === 'pre_record_and_webinar'
+      ? 'Pre-recorded conversation with live Q&A'
+      : variant === 'webinar_only'
         ? 'Live webinar'
         : 'Pre-recorded conversation';
   return [

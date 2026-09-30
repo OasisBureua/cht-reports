@@ -9,11 +9,12 @@ RULES
 - Numbers: every subgroup or survey finding carries its base (n=X). Call a finding "directional" when n is under 10.
 - Voice: declarative, confident, analytical. Frame comparisons as shifts in practice or thinking. Prose over lists. End sections with a forward-looking point.
 - Plain text in every string: no markdown, no asterisks, no headings, no bullet characters. Never put a double quote inside a string value; use single quotes (') for any quoted words.
-- Sections built from audience questions (hcpEngagementThemes, questionSummaries, audienceInsights) use only the Q&A part of the transcripts. If there is no Q&A, return empty arrays for all three.
+- Sections built from audience questions (hcpEngagementThemes, questionSummaries, audienceInsights) use only the live audience questions and the faculty answers to them (often, but not always, marked "Q&A:"). If there are no audience questions, return empty arrays for all three.
 
 OUTPUT: a single JSON object, nothing before or after it, with exactly these keys:
 {
   "programTitle": "short program title taken from the discussion topic",
+  "format": "pre_recorded | live_webinar | pre_recorded_and_live (pre_recorded_and_live when a recorded discussion is followed by live audience questions)",
   "executiveSummary": [{"claim": "one-sentence headline insight", "body": "2-4 sentences of support"}],
   "objectives": ["clinical learning objective, starting with a verb"],
   "kols": [{"name": "Dr. First Last", "affiliation": "title and institution as stated in the recording, or null"}],
