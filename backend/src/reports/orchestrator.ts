@@ -1,11 +1,13 @@
 /**
  * Report-generation orchestration: take a request, pull data, generate,
- * format, deposit in S3, notify.
+ * format, deposit in S3, mark complete, notify Platform.
  *
  * Retry semantics: each stage is idempotent to re-run (pulling data again,
  * generating again, uploading to the same deterministic S3 key again all
  * produce the same or a strictly improving result), so on failure the
  * whole request is retried from the top rather than resumed mid-pipeline.
+ * The S3 key is versioned (v1, then v2 after the first Regenerate...) from
+ * Platform's edit_attempts, so a retry rewrites the same version.
  * GenerationStateService caps this at MAX_GENERATION_ATTEMPTS (5) and
  * marks the request failed rather than retrying forever.
  */
@@ -17,7 +19,7 @@ import type { ReportInputPacket } from './packet/report-packet.types';
 import { ReportDocService } from './render/report-doc.service';
 import { parseNarrative, type ExecutiveSummaryContent } from './content/executive-summary';
 import { buildSurveyCharts } from './content/survey-charts';
-import { ReportStorageService } from './storage/report-storage.service';
+import { ReportStorageService, reportVersion } from './storage/report-storage.service';
 import { ReportReadyNotifier } from './notify/report-ready.service';
 import { GenerationStateService } from './state/generation-state.service';
 import { cleanTranscriptText, splitPrerecordedLivestream } from './preprocess/transcript';
@@ -59,6 +61,7 @@ export class ReportGenerationOrchestrator {
     }
 
     const campaignId = existing.campaignId;
+    const version = reportVersion(existing.editAttempts);
 
     try {
       await this.state.beginAttempt(requestId, 'pulling_data');
@@ -74,16 +77,14 @@ export class ReportGenerationOrchestrator {
 
       await this.state.markStatus(requestId, 'generating');
       if (templateNote) this.logger.warn(`Request ${requestId}: ${templateNote}`);
-      const content = await this.generateContent(packet, template.systemPrompt, requestId);
+      const content = await this.generateContent(packet, template.systemPrompt, requestId, version);
 
       await this.state.markStatus(requestId, 'rendering');
       const html = await this.reportDoc.renderExecutiveSummary(content, { htmlTemplate: template.html });
 
       await this.state.markStatus(requestId, 'uploading');
-      const s3Key = await this.storage.uploadReport(String(campaignId), requestId, html, content);
-
-      await this.notifier.notify({ requestId, campaignId: String(campaignId), s3Key });
-      await this.state.markComplete(requestId, s3Key);
+      const s3Key = await this.storage.uploadReport(String(campaignId), requestId, version, html, content);
+      await this.state.markComplete(requestId, s3Key, version);
 
       this.logger.log(`Request ${requestId} complete: ${s3Key}`);
     } catch (err) {
@@ -92,6 +93,10 @@ export class ReportGenerationOrchestrator {
       await this.state.markFailed(requestId, message);
       throw err;
     }
+
+    // Outside the try: the report is complete, so a notify problem must not
+    // mark it failed or retry the generation. The notifier never throws.
+    await this.notifier.notify({ requestId, campaignId: String(campaignId), version });
   }
 
   /**
@@ -104,6 +109,7 @@ export class ReportGenerationOrchestrator {
     packet: ReportInputPacket,
     systemPrompt: string,
     requestId: string,
+    version: number,
   ): Promise<ExecutiveSummaryContent> {
     const cleanedSessions = packet.sessions.map((session) => {
       const cleaned = cleanTranscriptText(session.transcriptText ?? '');
@@ -149,7 +155,7 @@ export class ReportGenerationOrchestrator {
     // Output budget comes from REPORT_MAX_OUTPUT_TOKENS (CompanionClient
     // default). No temperature: Claude Sonnet 5 on Bedrock rejects it.
     const result = await this.companion.generate({ systemPrompt, userContent });
-    await this.storage.saveModelReply(String(packet.campaignId), requestId, result.text);
+    await this.storage.saveModelReply(String(packet.campaignId), requestId, version, result.text);
     this.logger.log(
       `Generation for campaign ${packet.campaignId}: ${result.finishReason}, tokens in=${result.tokensInput ?? '?'} out=${result.tokensOutput ?? '?'}, ${estimateCostUsd(result)}`,
     );

@@ -7,7 +7,6 @@
 import { Inject, Injectable, OnModuleDestroy } from '@nestjs/common';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { S3Client } from '@aws-sdk/client-s3';
-import { SNSClient } from '@aws-sdk/client-sns';
 import { SQSClient } from '@aws-sdk/client-sqs';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import type { AppEnv } from '../config/env';
@@ -18,7 +17,6 @@ export class AwsClients implements OnModuleDestroy {
   private readonly cfg: { region: string; endpoint?: string };
   private s3Client?: S3Client;
   private sqsClient?: SQSClient;
-  private snsClient?: SNSClient;
   private dynamodbLow?: DynamoDBClient;
   private dynamodbDoc?: DynamoDBDocumentClient;
 
@@ -37,10 +35,6 @@ export class AwsClients implements OnModuleDestroy {
     return (this.sqsClient ??= new SQSClient(this.cfg));
   }
 
-  get sns(): SNSClient {
-    return (this.snsClient ??= new SNSClient(this.cfg));
-  }
-
   get dynamodb(): DynamoDBDocumentClient {
     if (!this.dynamodbDoc) {
       this.dynamodbLow = new DynamoDBClient(this.cfg);
@@ -54,7 +48,6 @@ export class AwsClients implements OnModuleDestroy {
   onModuleDestroy(): void {
     this.s3Client?.destroy();
     this.sqsClient?.destroy();
-    this.snsClient?.destroy();
     this.dynamodbLow?.destroy();
   }
 }

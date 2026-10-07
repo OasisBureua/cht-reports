@@ -67,4 +67,20 @@ resource "aws_s3_bucket_lifecycle_configuration" "reports" {
       noncurrent_days = 90
     }
   }
+
+  # CPR-35: reports are rarely re-downloaded after the first weeks. 30 days
+  # is the S3 minimum before Standard-IA (the ticket's 7 is not allowed).
+  rule {
+    id     = "reports-standard-ia"
+    status = "Enabled"
+
+    filter {
+      prefix = "reports/"
+    }
+
+    transition {
+      days          = 30
+      storage_class = "STANDARD_IA"
+    }
+  }
 }

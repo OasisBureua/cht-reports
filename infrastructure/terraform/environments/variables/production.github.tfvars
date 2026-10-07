@@ -23,6 +23,9 @@ contenthub_base_url = "https://contenthub.communityhealth.media/api/public"
 # service, not the same target as contenthub_base_url above.
 platform_tool_base_url = "https://testapp.communityhealth.media/api/export"
 
+# Report-ready email (CPR-35): Platform API base, not the export path above.
+platform_api_base_url = "https://testapp.communityhealth.media/api"
+
 alarm_notification_emails = [
   "uchenna@communityhealth.media",
   "sebastien@communityhealth.media",

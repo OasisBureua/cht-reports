@@ -5,6 +5,19 @@ import { APP_ENV } from '../../config/config.module';
 import { AwsClients } from '../../aws/aws-clients';
 import { PDF_PRINTER, type PdfPrinter } from '../render/pdf-printer';
 
+/**
+ * Version a generation writes: v1 for the first report, v2 after the first
+ * Regenerate, and so on. Derived from Platform's edit_attempts rather than
+ * counted here, so a retried attempt rewrites the same version.
+ */
+export function reportVersion(editAttempts: number): number {
+  return Math.max(0, Math.floor(editAttempts || 0)) + 1;
+}
+
+function versionPrefix(campaignId: string, requestId: string, version: number): string {
+  return `reports/${campaignId}/${requestId}/v${version}`;
+}
+
 @Injectable()
 export class ReportStorageService {
   constructor(
@@ -15,14 +28,21 @@ export class ReportStorageService {
 
   /**
    * Print HTML to PDF and store the report under reports/{campaign}/{report}/:
-   * - v1.pdf: the deliverable. Platform streams only .pdf keys.
-   * - v1.html: the rendered preview, for the future review/edit screen.
-   * - v1.json: the structured content the HTML was rendered from, so an
+   * - v{N}.pdf: the deliverable. Platform streams only .pdf keys.
+   * - v{N}.html: the rendered preview, for the future review/edit screen.
+   * - v{N}.json: the structured content the HTML was rendered from, so an
    *   edited report can be re-rendered without regenerating it.
-   * Returns the PDF key. version/vN is a follow-up (v1 for now).
+   * Each Regenerate writes the next N, so earlier versions stay in place.
+   * Returns the PDF key.
    */
-  async uploadReport(campaignId: string, requestId: string, html: string, content?: unknown): Promise<string> {
-    const prefix = `reports/${campaignId}/${requestId}/v1`;
+  async uploadReport(
+    campaignId: string,
+    requestId: string,
+    version: number,
+    html: string,
+    content?: unknown,
+  ): Promise<string> {
+    const prefix = versionPrefix(campaignId, requestId, version);
     const key = `${prefix}.pdf`;
     const body = await this.pdf.print(html);
 
@@ -48,8 +68,8 @@ export class ReportStorageService {
    * streams .pdf keys). Written even when generation fails, so a truncated
    * or unparseable reply can be inspected.
    */
-  async saveModelReply(campaignId: string, requestId: string, text: string): Promise<string> {
-    const key = `reports/${campaignId}/${requestId}/v1.model.txt`;
+  async saveModelReply(campaignId: string, requestId: string, version: number, text: string): Promise<string> {
+    const key = `${versionPrefix(campaignId, requestId, version)}.model.txt`;
     await this.aws.s3.send(
       new PutObjectCommand({ Bucket: this.env.reportsBucket, Key: key, Body: text, ContentType: 'text/plain; charset=utf-8' }),
     );

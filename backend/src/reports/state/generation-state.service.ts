@@ -35,6 +35,10 @@ export interface GenerationState {
   attemptCount: number;
   lastError: string | null;
   s3KeyPdf: string | null;
+  /** Regenerations so far. Platform owns this: it increments it on Regenerate. */
+  editAttempts: number;
+  /** Version of the last completed upload (v1 = first report). */
+  version: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -89,6 +93,8 @@ export class GenerationStateService {
       attemptCount: 0,
       lastError: null,
       s3KeyPdf: null,
+      editAttempts: 0,
+      version: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -129,11 +135,12 @@ export class GenerationStateService {
     return this.update(await this.require(requestId), { status: 'failed', lastError: error });
   }
 
-  async markComplete(requestId: string, s3KeyPdf: string): Promise<GenerationState> {
+  async markComplete(requestId: string, s3KeyPdf: string, version: number): Promise<GenerationState> {
     return this.update(await this.require(requestId), {
       status: 'complete',
       lastError: null,
       s3KeyPdf,
+      version,
     });
   }
 
@@ -145,7 +152,7 @@ export class GenerationStateService {
 
   private async update(
     current: GenerationState,
-    patch: Partial<Pick<GenerationState, 'status' | 'attemptCount' | 'lastError' | 's3KeyPdf'>>,
+    patch: Partial<Pick<GenerationState, 'status' | 'attemptCount' | 'lastError' | 's3KeyPdf' | 'version'>>,
   ): Promise<GenerationState> {
     const now = new Date().toISOString();
     const names: Record<string, string> = { '#updated_at': 'updated_at' };
@@ -171,6 +178,11 @@ export class GenerationStateService {
       names['#s3_key_pdf'] = 's3_key_pdf';
       values[':s3_key_pdf'] = patch.s3KeyPdf;
       sets.push('#s3_key_pdf = :s3_key_pdf');
+    }
+    if (patch.version !== undefined) {
+      names['#version'] = 'version';
+      values[':version'] = patch.version;
+      sets.push('#version = :version');
     }
 
     const result = await this.aws.dynamodb.send(
@@ -214,6 +226,8 @@ export class GenerationStateService {
       attemptCount: item.attempt_count as number,
       lastError: (item.last_error as string) ?? null,
       s3KeyPdf: (item.s3_key_pdf as string) ?? null,
+      editAttempts: (item.edit_attempts as number) ?? 0,
+      version: (item.version as number) ?? null,
       createdAt: item.created_at as string,
       updatedAt: item.updated_at as string,
     };

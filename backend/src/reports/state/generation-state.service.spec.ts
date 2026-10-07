@@ -122,12 +122,14 @@ describe('GenerationStateService', () => {
       },
     });
 
-    const state = await service().markComplete('req-1', 'reports/9/req-1/v1.pdf');
+    const state = await service().markComplete('req-1', 'reports/9/req-1/v1.pdf', 1);
 
     expect(state.status).toBe('complete');
     expect(state.s3KeyPdf).toBe('reports/9/req-1/v1.pdf');
     const update = ddbMock.commandCalls(UpdateCommand)[0].args[0].input;
     expect(update.ExpressionAttributeValues?.[':status']).toBe('complete');
     expect(update.ExpressionAttributeValues?.[':s3_key_pdf']).toBe('reports/9/req-1/v1.pdf');
+    expect(update.ExpressionAttributeValues?.[':version']).toBe(1);
+    expect(update.UpdateExpression).toContain('#version = :version');
   });
 });
