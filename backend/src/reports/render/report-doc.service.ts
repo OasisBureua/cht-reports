@@ -12,7 +12,14 @@
 
 import { Injectable } from '@nestjs/common';
 import { BUILTIN_HTML_TEMPLATE } from '../templates/builtin';
-import type { Claim, ExecutiveSummaryContent, SurveyChart, Theme } from '../content/executive-summary';
+import type {
+  AttendeesSummary,
+  Claim,
+  CountRow,
+  ExecutiveSummaryContent,
+  SurveyChart,
+  Theme,
+} from '../content/executive-summary';
 
 export const SECTION_IDS = [
   'executiveSummary',
@@ -47,6 +54,12 @@ const SECTION_TITLES: Record<SectionId, string> = {
   conclusions: 'Conclusion: Strategic Takeaways',
 };
 
+/** Audience Q&A sections; replaced by content.qaNote when none render. */
+const QA_SECTIONS: readonly SectionId[] = ['hcpEngagement', 'questionSummaries', 'audienceInsights'];
+
+export const TRANSCRIPT_KOLS_NOTE =
+  'No KOLs are recorded in Content Hub for this program. Names and affiliations are as stated in the recording.';
+
 export interface RenderOptions {
   htmlTemplate?: string;
   sections?: readonly SectionId[];
@@ -57,7 +70,7 @@ export class ReportDocService {
   async renderExecutiveSummary(content: ExecutiveSummaryContent, options: RenderOptions = {}): Promise<string> {
     const enabled = new Set(options.sections ?? SECTION_IDS);
     const rendered: string[] = [];
-    const omitted: string[] = [];
+    const omitted: SectionId[] = [];
 
     for (const id of SECTION_IDS) {
       if (!enabled.has(id)) continue;
@@ -65,14 +78,19 @@ export class ReportDocService {
       if (body) {
         rendered.push(`<section class="section section-${id}">\n<h2>${SECTION_TITLES[id]}</h2>\n${body}\n</section>`);
       } else {
-        omitted.push(SECTION_TITLES[id]);
+        omitted.push(id);
       }
     }
+
+    const enabledQa = QA_SECTIONS.filter((id) => enabled.has(id));
+    const qaPending = Boolean(content.qaNote) && enabledQa.length > 0 && enabledQa.every((id) => omitted.includes(id));
+    const missing = omitted.filter((id) => !(qaPending && QA_SECTIONS.includes(id))).map((id) => SECTION_TITLES[id]);
 
     const notes = [
       content.transcriptNote ?? null,
       content.inputCompletenessNote,
-      omitted.length > 0 ? `Not included for lack of input data: ${omitted.join(', ')}.` : null,
+      qaPending ? (content.qaNote ?? null) : null,
+      missing.length > 0 ? `Not included for lack of input data: ${missing.join(', ')}.` : null,
     ].filter((n): n is string => Boolean(n));
 
     const inputCompleteness = notes.length
@@ -90,7 +108,7 @@ export class ReportDocService {
 
 function renderCover(content: ExecutiveSummaryContent): string {
   const n = content.narrative;
-  const kols = n.kols.map((k) => k.name).join(', ');
+  const kols = content.kols.map((k) => k.name).join(', ');
   const dates = [...new Set(content.sessions.map((s) => s.date).filter((d): d is string => Boolean(d)))]
     .map(formatDate)
     .join(' · ');
@@ -133,10 +151,15 @@ function renderSection(id: SectionId, content: ExecutiveSummaryContent): string 
     case 'objectives':
       return n.objectives.length ? `<ol class="objectives">${n.objectives.map((o) => `<li>${esc(o)}</li>`).join('')}</ol>` : '';
     case 'kols':
-      return n.kols.length
-        ? `<ul class="kols">${n.kols
-            .map((k) => `<li><strong>${esc(k.name)}</strong>${k.affiliation ? `<span>${esc(k.affiliation)}</span>` : ''}</li>`)
-            .join('')}</ul>`
+      return content.kols.length
+        ? [
+            `<ul class="kols">${content.kols
+              .map((k) => `<li><strong>${esc(k.name)}</strong>${k.affiliation ? `<span>${esc(k.affiliation)}</span>` : ''}</li>`)
+              .join('')}</ul>`,
+            content.kolSource === 'transcript' ? `<p class="note">${esc(TRANSCRIPT_KOLS_NOTE)}</p>` : '',
+          ]
+            .filter(Boolean)
+            .join('\n')
         : '';
     case 'overview':
       return paragraphs(n.overview);
@@ -163,7 +186,7 @@ function renderSection(id: SectionId, content: ExecutiveSummaryContent): string 
             .join('')}</dl>`
         : '';
     case 'attendees':
-      return '';
+      return content.attendees ? attendeesSection(content.attendees) : '';
     case 'surveyResults':
       return content.surveyCharts.map((c, i) => surveyChart(c, i + 1)).join('\n');
     case 'conclusions':
@@ -178,6 +201,34 @@ function renderSection(id: SectionId, content: ExecutiveSummaryContent): string 
             .join('\n')
         : '';
   }
+}
+
+function attendeesSection(a: AttendeesSummary): string {
+  const rate = a.registered && a.attended !== null ? Math.round((a.attended / a.registered) * 100) : null;
+  const facts = [
+    a.registered !== null ? ['Registered', String(a.registered)] : null,
+    a.attended !== null ? ['Attended', rate !== null ? `${a.attended} (${rate}% of registrants)` : String(a.attended)] : null,
+    a.avgMinutesWatched !== null ? ['Average minutes watched', String(a.avgMinutesWatched)] : null,
+  ].filter((f): f is string[] => f !== null);
+  return [
+    facts.length
+      ? `<dl class="attendee-facts">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>`
+      : '',
+    countTable('Attendees by specialty', 'Specialty', a.bySpecialty),
+    countTable('Attendees by institution', 'Institution', a.byInstitution),
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function countTable(caption: string, heading: string, rows: CountRow[]): string {
+  if (!rows.length) return '';
+  return [
+    `<table class="counts"><caption>${esc(caption)}</caption>`,
+    `<thead><tr><th>${esc(heading)}</th><th>Attendees</th></tr></thead>`,
+    `<tbody>${rows.map((r) => `<tr><td>${esc(r.label)}</td><td>${r.count}</td></tr>`).join('')}</tbody>`,
+    '</table>',
+  ].join('');
 }
 
 function claimList(items: Claim[]): string {

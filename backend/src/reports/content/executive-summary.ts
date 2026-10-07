@@ -18,7 +18,7 @@ export interface Claim {
 
 export interface Kol {
   name: string;
-  /** Title and institution as stated in the recording. */
+  /** Title and institution: from Hub, or as stated in the recording. */
   affiliation: string | null;
 }
 
@@ -77,6 +77,20 @@ export interface SurveyChart {
   options: SurveyChartOption[];
 }
 
+export interface CountRow {
+  label: string;
+  count: number;
+}
+
+/** CPR-46 Attendees section. Counts only, no names. */
+export interface AttendeesSummary {
+  registered: number | null;
+  attended: number | null;
+  avgMinutesWatched: number | null;
+  bySpecialty: CountRow[];
+  byInstitution: CountRow[];
+}
+
 export interface SessionSummary {
   title: string | null;
   kind: string | null;
@@ -92,8 +106,12 @@ export interface ExecutiveSummaryContent {
   sessions: SessionSummary[];
   narrative: GeneratedNarrative;
   surveyCharts: SurveyChart[];
-  /** Registration/attendance data; not in the packet yet. */
-  attendees: null;
+  /** Hub KOL records when the packet has them; otherwise the model's, from the recording. */
+  kols: Kol[];
+  kolSource: 'hub' | 'transcript';
+  attendees: AttendeesSummary | null;
+  /** Set for Zoom sessions: why the audience Q&A sections are absent. */
+  qaNote?: string | null;
   /** Set when the report used transcripts (CPR-47): they are machine-generated. */
   transcriptNote?: string | null;
   inputCompletenessNote: string | null;

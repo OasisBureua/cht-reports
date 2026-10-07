@@ -61,6 +61,16 @@ Auth: `X-API-Key` (`CONTENTHUB_API_KEY`) + `X-Request-Id`. `CONTENTHUB_BASE_URL`
 
 Response (camelCase): campaign identity, `hubspotRawData`, windowed `platformSlices`, `sessions` / `surveyResponses` (empty until Hub warehouse ingest), `inputCompleteness` per source (`ok` | `missing` | `error`). Missing sources are notes, not 500s. Hub does not call vendors on this path.
 
+Fields the report reads beyond those (CPR-46; each is optional until Hub sends it):
+
+| Field | Used for |
+|---|---|
+| `kols[]` `{ name, title, institution }` | Key Opinion Leaders section and cover. Overrides the KOLs the model reads from the transcript; the report notes when it falls back to the transcript. |
+| `registeredCount`, `attendedCount`, `avgMinutesWatched`, `attendees[]` `{ specialty, institution, minutesWatched }` | Attendees section (CPR-42). Counts only; no names. |
+| `surveyQuestions[]` `{ id, prompt, type, options, surveyType }` | Survey chart labels and option order (CPR-43). Answers are matched on `id`. |
+
+For Zoom sessions with no audience Q&A, the three Q&A sections are replaced by one note that live Q&A capture is not available yet (CPR-33).
+
 ## What this repo owns
 
 - NestJS SQS consumer and orchestrator

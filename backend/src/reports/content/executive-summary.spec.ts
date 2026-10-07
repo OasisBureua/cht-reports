@@ -62,6 +62,36 @@ describe('buildSurveyCharts', () => {
     expect(charts[1]).toMatchObject({ responses: 2, multiSelect: true, options: [{ label: 'Cost', count: 2 }, { label: 'Efficacy', count: 1 }] });
   });
 
+  it('uses the question schema for labels and option order (CPR-43)', () => {
+    const longOption = 'I will change how I sequence therapy for HER2-low patients after progression on endocrine therapy';
+    const charts = buildSurveyCharts(
+      [
+        { q2_setting: 'Community', q5_change: longOption, q9_comments: 'Great session' },
+        { q2_setting: 'Academic', q5_change: longOption, q1_extra: 'Yes' },
+        { q2_setting: 'Community', q5_change: 'No change' },
+      ],
+      [
+        { id: 'q5_change', prompt: 'Will this change your practice?', type: 'single_choice', options: ['No change', longOption] },
+        { id: 'q2_setting', prompt: 'What is your practice setting?', type: 'single_choice', options: ['Academic', 'Community', 'Hospital'] },
+        { id: 'q9_comments', prompt: 'Comments', type: 'long_text' },
+      ],
+    );
+    expect(charts.map((c) => c.question)).toEqual([
+      'Will this change your practice?',
+      'What is your practice setting?',
+      'Extra',
+    ]);
+    expect(charts[0].options).toEqual([
+      { label: 'No change', count: 1 },
+      { label: longOption, count: 2 },
+    ]);
+    expect(charts[1].options).toEqual([
+      { label: 'Academic', count: 1 },
+      { label: 'Community', count: 2 },
+      { label: 'Hospital', count: 0 },
+    ]);
+  });
+
   it('labels keys readably', () => {
     expect(questionLabel('q1_practice_setting')).toBe('Practice setting');
     expect(questionLabel('yearsInPractice')).toBe('Years in practice');

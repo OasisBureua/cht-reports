@@ -1,4 +1,4 @@
-import { ReportDocService, SECTION_IDS } from './report-doc.service';
+import { ReportDocService, SECTION_IDS, TRANSCRIPT_KOLS_NOTE } from './report-doc.service';
 import type { ExecutiveSummaryContent, GeneratedNarrative } from '../content/executive-summary';
 
 const narrative: GeneratedNarrative = {
@@ -26,6 +26,8 @@ const content: ExecutiveSummaryContent = {
   surveyCharts: [
     { question: 'Practice setting', responses: 4, multiSelect: false, options: [{ label: 'Community', count: 3 }, { label: 'Academic', count: 1 }] },
   ],
+  kols: narrative.kols,
+  kolSource: 'transcript',
   attendees: null,
   inputCompletenessNote: 'The following sources were unavailable: hubspot: missing.',
 };
@@ -100,6 +102,60 @@ describe('ReportDocService', () => {
     expect(html.startsWith('<article>')).toBe(true);
     expect(html).toContain('Costs $1 and $&amp; stays');
     expect(html).toContain('{{unknown}}');
+  });
+
+  it('renders Hub KOLs without the transcript note', async () => {
+    const html = await service.renderExecutiveSummary({
+      ...content,
+      kols: [{ name: 'Dr. Ana Ruiz', affiliation: 'MD, Dana-Farber' }],
+      kolSource: 'hub',
+    });
+    expect(html).toContain('<li><strong>Dr. Ana Ruiz</strong><span>MD, Dana-Farber</span></li>');
+    expect(html).toContain('<dd>Dr. Ana Ruiz</dd>');
+    expect(html).not.toContain('Dr. VK Gadi');
+    expect(html).not.toContain(TRANSCRIPT_KOLS_NOTE);
+  });
+
+  it('says when KOLs come from the recording', async () => {
+    const html = await service.renderExecutiveSummary(content);
+    expect(html).toContain(TRANSCRIPT_KOLS_NOTE);
+  });
+
+  it('renders the Attendees section with counts and no names', async () => {
+    const html = await service.renderExecutiveSummary({
+      ...content,
+      attendees: {
+        registered: 40,
+        attended: 30,
+        avgMinutesWatched: 42,
+        bySpecialty: [{ label: 'Oncology', count: 20 }, { label: 'Not provided', count: 10 }],
+        byInstitution: [{ label: 'Mayo Clinic', count: 5 }],
+      },
+    });
+    expect(html).toContain('<h2>Attendees</h2>');
+    expect(html).toContain('<dt>Registered</dt><dd>40</dd>');
+    expect(html).toContain('<dt>Attended</dt><dd>30 (75% of registrants)</dd>');
+    expect(html).toContain('<dt>Average minutes watched</dt><dd>42</dd>');
+    expect(html).toContain('<tr><td>Oncology</td><td>20</td></tr>');
+    expect(html).toContain('<tr><td>Mayo Clinic</td><td>5</td></tr>');
+    expect(html).not.toContain('Not included for lack of input data: Summary of Conversation, Question Summaries, Attendees.');
+  });
+
+  it('replaces the empty Q&A sections with the Q&A capture note', async () => {
+    const qaNote = 'Live Q&A capture is not available yet.';
+    const html = await service.renderExecutiveSummary({
+      ...content,
+      qaNote,
+      narrative: { ...narrative, hcpEngagementThemes: [], questionSummaries: [], audienceInsights: [] },
+    });
+    expect(html).toContain('Live Q&amp;A capture is not available yet.');
+    expect(html).toContain('Not included for lack of input data: Summary of Conversation, Attendees.');
+  });
+
+  it('keeps the generic note when some Q&A sections rendered', async () => {
+    const html = await service.renderExecutiveSummary({ ...content, qaNote: 'Live Q&A capture is not available yet.' });
+    expect(html).not.toContain('Live Q&amp;A capture');
+    expect(html).toContain('Not included for lack of input data: Summary of Conversation, Question Summaries, Attendees.');
   });
 
   it('exposes all 13 CPR-18 sections', () => {

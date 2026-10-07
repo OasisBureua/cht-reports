@@ -1,22 +1,24 @@
 /**
  * Built-in Executive Summary template: used when the packet has no template
  * pointer or its S3 files can't be loaded. Must match
- * `backend/templates/executive_summary/1.1.0/` (checked in builtin.spec.ts).
+ * `backend/templates/executive_summary/1.2.0/` (checked in builtin.spec.ts).
  */
 
-export const BUILTIN_SEMVER = '1.1.0';
+export const BUILTIN_SEMVER = '1.2.0';
 
 export const BUILTIN_SYSTEM_PROMPT = `You write the narrative sections of a Community Health Media (CHM) Executive Summary: an analytical report for a pharmaceutical client about a medical education program (a pre-recorded KOL conversation and/or a live webinar with HCPs).
 
-INPUT: transcripts of the program sessions (a "Q&A:" part, when present, is the live audience discussion), post-event feedback survey answers, and platform/HubSpot metrics. Any of these may be empty.
+INPUT: a faculty list from Content Hub, an attendance summary (counts by specialty and institution), the feedback survey questions, transcripts of the program sessions (a "Q&A:" part, when present, is the live audience discussion), post-event feedback survey answers, and platform/HubSpot metrics. Any of these may be empty.
 
 RULES
 - Use only the input. Never invent facts, numbers, trial results, names, titles or dates. If the input cannot support a section, return an empty array for it.
+- When a faculty list is given, it is the source of truth for faculty names, titles and institutions. Spell names as the list does, even where the transcript differs.
 - Name only the faculty (KOLs, moderators). Never name audience members, attendees or people who asked questions; describe them by role only ("a community oncologist", "one attendee").
 - Quotes: verbatim from a KOL in the transcript, under 35 words, attributed as "Dr. <Last name>". Fix only filler words and false starts.
 - Numbers: every subgroup or survey finding carries its base (n=X). Call a finding "directional" when n is under 10.
 - Voice: declarative, confident, analytical. Frame comparisons as shifts in practice or thinking. Prose over lists. End sections with a forward-looking point.
 - Plain text in every string: no markdown, no asterisks, no headings, no bullet characters. Never put a double quote inside a string value; use single quotes (') for any quoted words.
+- Attendance and survey questions: use them for context (who attended, what was asked) with their n. The report prints the attendance table and survey charts itself; do not restate every number.
 - Sections built from audience questions (hcpEngagementThemes, questionSummaries, audienceInsights) use only the live audience questions and the faculty answers to them (often, but not always, marked "Q&A:"). If there are no audience questions, return empty arrays for all three.
 
 OUTPUT: a single JSON object, nothing before or after it, with exactly these keys:
@@ -25,7 +27,7 @@ OUTPUT: a single JSON object, nothing before or after it, with exactly these key
   "format": "pre_recorded | live_webinar | pre_recorded_and_live (pre_recorded_and_live when a recorded discussion is followed by live audience questions)",
   "executiveSummary": [{"claim": "one-sentence headline insight", "body": "2-4 sentences of support"}],
   "objectives": ["clinical learning objective, starting with a verb"],
-  "kols": [{"name": "Dr. First Last", "affiliation": "title and institution as stated in the recording, or null"}],
+  "kols": [{"name": "Dr. First Last", "affiliation": "title and institution from the faculty list, else as stated in the recording, or null"}],
   "overview": ["paragraph describing the program's format, focus and framing"],
   "keyTakeaways": [{"claim": "...", "body": "..."}],
   "quotes": [{"text": "...", "speaker": "Dr. Last"}],
@@ -76,6 +78,16 @@ export const BUILTIN_HTML_TEMPLATE = `<!DOCTYPE html>
   .survey-chart figcaption span { color: #55606e; font-size: 9.5pt; margin-left: 6px; }
   .survey-chart svg .opt, .survey-chart svg .pct { font-size: 12px; fill: #1c2430; font-family: inherit; }
   .survey-chart svg .bar { fill: #0f6e6e; }
+  .note { color: #55606e; font-size: 9.5pt; }
+  .attendee-facts { display: flex; gap: 12px; margin: 0 0 18px; }
+  .attendee-facts div { flex: 1; background: #f3f7f7; padding: 10px 14px; }
+  .attendee-facts dt { color: #55606e; font-size: 9.5pt; }
+  .attendee-facts dd { margin: 2px 0 0; font-size: 16pt; font-weight: 700; color: #0f6e6e; }
+  .counts { width: 100%; border-collapse: collapse; margin: 10px 0 18px; break-inside: avoid; }
+  .counts caption { text-align: left; font-weight: 700; padding-bottom: 6px; }
+  .counts th, .counts td { text-align: left; padding: 5px 8px; border-bottom: 1px solid #e3e7ec; }
+  .counts th:last-child, .counts td:last-child { text-align: right; width: 90px; }
+  .counts th { color: #55606e; font-weight: 600; font-size: 9.5pt; }
   .input-completeness { color: #55606e; font-size: 9.5pt; margin-top: 36px; }
   .input-completeness h2 { font-size: 11pt; color: #55606e; border-color: #c9d0d8; }
   </style>

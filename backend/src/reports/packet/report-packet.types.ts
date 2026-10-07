@@ -21,6 +21,31 @@ export interface ReportPacketSurvey {
   answers: Record<string, unknown>;
 }
 
+/** Survey question schema (CPR-43). Answers are keyed by `id`. */
+export interface ReportPacketSurveyQuestion {
+  id: string;
+  prompt: string;
+  /** Native survey types: single_choice, multi_choice, text, long_text, info. */
+  type: string;
+  /** Option order as the survey shows it. */
+  options?: string[] | null;
+  surveyType?: string | null;
+}
+
+/** Hub KOL record (CPR-45): from the campaign's attached KOLs and linked shoots. */
+export interface ReportPacketKol {
+  name: string;
+  title: string | null;
+  institution: string | null;
+}
+
+/** One attendee, without identity (CPR-42). */
+export interface ReportPacketAttendee {
+  specialty: string | null;
+  institution: string | null;
+  minutesWatched: number | null;
+}
+
 export interface ReportPacketPlatformSlice {
   platform: string;
   fetchDate: string;
@@ -48,6 +73,14 @@ export interface ReportInputPacket {
   platformSlices: ReportPacketPlatformSlice[];
   sessions: ReportPacketSession[];
   surveyResponses: ReportPacketSurvey[];
+  /** CPR-43. Absent until Hub exports the schema. */
+  surveyQuestions?: ReportPacketSurveyQuestion[];
+  kols?: ReportPacketKol[];
+  /** CPR-42 attendance metrics. Absent until Hub exports them. */
+  registeredCount?: number | null;
+  attendedCount?: number | null;
+  avgMinutesWatched?: number | null;
+  attendees?: ReportPacketAttendee[];
   /** Absent on older Hub deploys; null when Hub has no template row. */
   template?: ReportPacketTemplate | null;
   inputCompleteness: Record<string, SourceCompleteness>;
