@@ -372,7 +372,7 @@ module "ecs_backend" {
     # ready. Token comes from the same M2M client as Hub, different scope.
     PLATFORM_BASE_URL             = var.platform_api_base_url
     PLATFORM_REPORTS_NOTIFY_SCOPE = var.platform_reports_notify_scope
-    MAX_GENERATION_ATTEMPTS       = "5"
+    MAX_GENERATION_ATTEMPTS       = "3"
   }
 
   secret_arns = merge(
