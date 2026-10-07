@@ -13,6 +13,7 @@ import { ReportGenerationOrchestrator } from './orchestrator';
 import { ReportRequestsConsumer } from './consumer';
 import { TemplateStore } from './templates/template-store.service';
 import { CognitoM2mTokenService } from '../auth/cognito-m2m-token.service';
+import { ReportRequestQueue } from './queue/report-request-queue.service';
 
 @Module({
   imports: [ConfigModule, AwsModule],
@@ -28,6 +29,7 @@ import { CognitoM2mTokenService } from '../auth/cognito-m2m-token.service';
     ReportRequestsConsumer,
     TemplateStore,
     CognitoM2mTokenService,
+    ReportRequestQueue,
   ],
 })
 export class ReportsModule {}

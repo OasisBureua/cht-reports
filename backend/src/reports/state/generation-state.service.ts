@@ -20,6 +20,7 @@ export type GenerationStatus =
   | 'generating'
   | 'rendering'
   | 'uploading'
+  | 'waiting_for_transcript'
   | 'complete'
   | 'failed';
 
@@ -39,6 +40,8 @@ export interface GenerationState {
   editAttempts: number;
   /** Version of the last completed upload (v1 = first report). */
   version: number | null;
+  /** When this job started waiting for a Zoom transcript (CPR-47). */
+  waitingSince: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -95,6 +98,7 @@ export class GenerationStateService {
       s3KeyPdf: null,
       editAttempts: 0,
       version: null,
+      waitingSince: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -133,6 +137,33 @@ export class GenerationStateService {
 
   async markFailed(requestId: string, error: string): Promise<GenerationState> {
     return this.update(await this.require(requestId), { status: 'failed', lastError: error });
+  }
+
+  /**
+   * Park the job until Zoom's transcript lands. Keeps the first waiting_since so
+   * the overall wait can time out, and gives back the attempt this check used:
+   * waiting is not a failure.
+   */
+  async markWaiting(requestId: string): Promise<GenerationState> {
+    const current = await this.require(requestId);
+    const now = new Date().toISOString();
+    const result = await this.aws.dynamodb.send(
+      new UpdateCommand({
+        TableName: this.env.generationStateTable,
+        Key: { campaign_id: current.campaignId, report_id: current.requestId },
+        UpdateExpression:
+          'SET #status = :waiting, waiting_since = if_not_exists(waiting_since, :now), attempt_count = :attempts, last_error = :null, #updated_at = :now',
+        ExpressionAttributeNames: { '#status': 'status', '#updated_at': 'updated_at' },
+        ExpressionAttributeValues: {
+          ':waiting': 'waiting_for_transcript',
+          ':now': now,
+          ':attempts': Math.max(0, current.attemptCount - 1),
+          ':null': null,
+        },
+        ReturnValues: 'ALL_NEW',
+      }),
+    );
+    return this.fromItem(result.Attributes!);
   }
 
   async markComplete(requestId: string, s3KeyPdf: string, version: number): Promise<GenerationState> {
@@ -228,6 +259,7 @@ export class GenerationStateService {
       s3KeyPdf: (item.s3_key_pdf as string) ?? null,
       editAttempts: (item.edit_attempts as number) ?? 0,
       version: (item.version as number) ?? null,
+      waitingSince: (item.waiting_since as string) ?? null,
       createdAt: item.created_at as string,
       updatedAt: item.updated_at as string,
     };

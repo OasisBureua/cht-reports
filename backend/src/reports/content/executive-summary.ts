@@ -94,6 +94,8 @@ export interface ExecutiveSummaryContent {
   surveyCharts: SurveyChart[];
   /** Registration/attendance data; not in the packet yet. */
   attendees: null;
+  /** Set when the report used transcripts (CPR-47): they are machine-generated. */
+  transcriptNote?: string | null;
   inputCompletenessNote: string | null;
 }
 

@@ -91,8 +91,9 @@ data "aws_iam_policy_document" "task_reports_io" {
   }
 
   statement {
-    sid       = "ReportRequestsConsume"
-    actions   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
+    sid = "ReportRequestsConsume"
+    # SendMessage: re-queue a report with a delay while it waits for a transcript (CPR-47).
+    actions   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes", "sqs:SendMessage"]
     resources = [var.report_requests_queue_arn]
   }
 

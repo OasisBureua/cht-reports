@@ -36,6 +36,10 @@ version has its own `.pdf`, `.html`, `.json` and `.model.txt`. On complete
 the worker writes `s3_key_pdf` and `version`, which Platform shows and
 downloads.
 
+### Waiting for the Zoom transcript (CPR-47)
+
+If a session from the last 24 hours (`TRANSCRIPT_WAIT_RECENT_HOURS`) has no transcript yet, the job goes to `waiting_for_transcript` and re-queues itself with a delay (`TRANSCRIPT_RECHECK_SECONDS`, default 300). Waiting does not use up an attempt. After `TRANSCRIPT_WAIT_MAX_MINUTES` (default 180) the job fails with the reason. Reports built from transcripts note that they are machine-generated.
+
 ### Report-ready email (CPR-35)
 
 Platform sends it, like its other transactional email (same sender, layout
