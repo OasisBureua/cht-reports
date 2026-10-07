@@ -62,7 +62,7 @@ export function loadEnv(): AppEnv {
     platformBaseUrl: process.env.PLATFORM_BASE_URL?.trim().replace(/\/+$/, '') ?? '',
     platformNotifyScope: process.env.PLATFORM_REPORTS_NOTIFY_SCOPE?.trim() || 'platform/reports.notify',
     generationStateTable: required('GENERATION_STATE_TABLE'),
-    maxGenerationAttempts: Number(process.env.MAX_GENERATION_ATTEMPTS ?? 5),
+    maxGenerationAttempts: Number(process.env.MAX_GENERATION_ATTEMPTS ?? 3),
     reportMaxOutputTokens: Number(process.env.REPORT_MAX_OUTPUT_TOKENS ?? 16000),
     maxEditAttempts: Number(process.env.MAX_EDIT_ATTEMPTS ?? 3),
     bedrockModelId: process.env.BEDROCK_MODEL_ID ?? 'us.anthropic.claude-sonnet-5',

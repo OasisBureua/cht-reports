@@ -76,9 +76,9 @@ export class ReportRequestsConsumer implements OnModuleInit, OnModuleDestroy {
       await this.orchestrator.handle(request);
     } catch (err) {
       // Don't delete on failure. SQS redelivers up to the queue's
-      // maxReceiveCount, then it lands on the DLQ. GenerationStateService's
-      // own attempt cap (5) is enforced independently inside the
-      // orchestrator; this is the queue-level backstop, not the same limit.
+      // maxReceiveCount (3), then it lands on the DLQ. The orchestrator's
+      // attempt cap matches it (MAX_GENERATION_ATTEMPTS = 3). A job that
+      // crashes without reaching either is timed out by Platform (CPR-48).
       this.logger.error(
         `Request ${request.requestId} failed, leaving on queue for redelivery: ${
           err instanceof Error ? err.message : err

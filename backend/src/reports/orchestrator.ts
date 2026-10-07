@@ -8,7 +8,7 @@
  * whole request is retried from the top rather than resumed mid-pipeline.
  * The S3 key is versioned (v1, then v2 after the first Regenerate...) from
  * Platform's edit_attempts, so a retry rewrites the same version.
- * GenerationStateService caps this at MAX_GENERATION_ATTEMPTS (5) and
+ * GenerationStateService caps this at MAX_GENERATION_ATTEMPTS (3, the queue's maxReceiveCount) and
  * marks the request failed rather than retrying forever.
  */
 
