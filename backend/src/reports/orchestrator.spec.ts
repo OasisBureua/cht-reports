@@ -6,6 +6,9 @@ import type { ReportStorageService } from './storage/report-storage.service';
 import type { ReportReadyNotifier } from './notify/report-ready.service';
 import type { GenerationState, GenerationStateService } from './state/generation-state.service';
 import type { TemplateStore } from './templates/template-store.service';
+import type { ReportRequestQueue } from './queue/report-request-queue.service';
+import type { ReportPacketSession } from './packet/report-packet.types';
+import { testEnv } from '../config/test-env';
 
 function stateRow(overrides: Partial<GenerationState> = {}): GenerationState {
   return {
@@ -20,13 +23,26 @@ function stateRow(overrides: Partial<GenerationState> = {}): GenerationState {
     s3KeyPdf: null,
     editAttempts: 0,
     version: null,
+    waitingSince: null,
     createdAt: '2026-10-01T00:00:00.000Z',
     updatedAt: '2026-10-01T00:00:00.000Z',
     ...overrides,
   };
 }
 
-function setup(row: GenerationState) {
+function session(overrides: Partial<ReportPacketSession> = {}): ReportPacketSession {
+  return {
+    platformToolProgramId: 'p-1',
+    kind: 'webinar',
+    title: 'Live webinar',
+    sessionDate: new Date().toISOString(),
+    zoomMeetingUuid: 'z-1',
+    transcriptText: '',
+    ...overrides,
+  };
+}
+
+function setup(row: GenerationState, sessions: ReportPacketSession[] = []) {
   const calls: string[] = [];
   const state = {
     get: jest.fn().mockResolvedValue(row),
@@ -38,7 +54,9 @@ function setup(row: GenerationState) {
       return row;
     }),
     markFailed: jest.fn().mockResolvedValue(row),
+    markWaiting: jest.fn().mockResolvedValue(row),
   };
+  const queue = { requeue: jest.fn().mockResolvedValue(undefined) };
   const storage = {
     uploadReport: jest.fn().mockImplementation(async (_c: string, _r: string, version: number) => {
       calls.push('upload');
@@ -52,7 +70,7 @@ function setup(row: GenerationState) {
       return true;
     }),
   };
-  const contentHub = { fetchReportPacket: jest.fn().mockResolvedValue({ campaignId: 9, template: null }) };
+  const contentHub = { fetchReportPacket: jest.fn().mockResolvedValue({ campaignId: 9, template: null, sessions }) };
   const templates = {
     load: jest.fn().mockResolvedValue({ template: { systemPrompt: 'prompt', html: undefined }, note: null }),
   };
@@ -66,12 +84,14 @@ function setup(row: GenerationState) {
     notifier as unknown as ReportReadyNotifier,
     state as unknown as GenerationStateService,
     templates as unknown as TemplateStore,
+    queue as unknown as ReportRequestQueue,
+    testEnv,
   );
   const generate = jest
     .spyOn(orchestrator as unknown as { generateContent: (...args: unknown[]) => Promise<unknown> }, 'generateContent')
     .mockResolvedValue({ title: 'T' });
 
-  return { orchestrator, state, storage, notifier, generate, calls };
+  return { orchestrator, state, storage, notifier, generate, queue, calls };
 }
 
 describe('ReportGenerationOrchestrator', () => {
@@ -115,5 +135,54 @@ describe('ReportGenerationOrchestrator', () => {
 
     expect(storage.uploadReport).not.toHaveBeenCalled();
     expect(notifier.notify).not.toHaveBeenCalled();
+  });
+
+  describe('waiting for the Zoom transcript (CPR-47)', () => {
+    it('parks the job and re-queues it when a recent session has no transcript yet', async () => {
+      const { orchestrator, state, queue, generate, notifier } = setup(stateRow(), [session()]);
+
+      await orchestrator.handle({ requestId: 'rep-1', campaignId: '9' });
+
+      expect(state.markWaiting).toHaveBeenCalledWith('rep-1');
+      expect(queue.requeue).toHaveBeenCalledWith('rep-1', '9', 300);
+      expect(generate).not.toHaveBeenCalled();
+      expect(notifier.notify).not.toHaveBeenCalled();
+      expect(state.markFailed).not.toHaveBeenCalled();
+    });
+
+    it('fails with a clear reason once the wait passes the limit', async () => {
+      const longAgo = new Date(Date.now() - 181 * 60_000).toISOString();
+      const { orchestrator, state, queue, generate } = setup(stateRow({ waitingSince: longAgo }), [session()]);
+
+      await orchestrator.handle({ requestId: 'rep-1', campaignId: '9' });
+
+      expect(state.markFailed).toHaveBeenCalledWith(
+        'rep-1',
+        expect.stringContaining('transcript for "Live webinar" did not arrive within 3 hours'),
+      );
+      expect(queue.requeue).not.toHaveBeenCalled();
+      expect(generate).not.toHaveBeenCalled();
+    });
+
+    it('does not wait for an older session that never got a transcript', async () => {
+      const old = session({ sessionDate: new Date(Date.now() - 3 * 86_400_000).toISOString() });
+      const { orchestrator, queue, generate } = setup(stateRow(), [old]);
+
+      await orchestrator.handle({ requestId: 'rep-1', campaignId: '9' });
+
+      expect(queue.requeue).not.toHaveBeenCalled();
+      expect(generate).toHaveBeenCalled();
+    });
+
+    it('generates once the transcript is in', async () => {
+      const { orchestrator, queue, generate } = setup(stateRow({ waitingSince: new Date().toISOString() }), [
+        session({ transcriptText: 'WEBVTT ...' }),
+      ]);
+
+      await orchestrator.handle({ requestId: 'rep-1', campaignId: '9' });
+
+      expect(queue.requeue).not.toHaveBeenCalled();
+      expect(generate).toHaveBeenCalled();
+    });
   });
 });

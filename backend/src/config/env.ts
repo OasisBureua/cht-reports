@@ -36,6 +36,12 @@ export interface AppEnv {
   platformNotifyScope: string;
   generationStateTable: string;
   maxGenerationAttempts: number;
+  /** A session this recent with no transcript yet is waited for (CPR-47). */
+  transcriptRecentHours: number;
+  /** Give up waiting for a transcript after this long. */
+  transcriptWaitMaxMinutes: number;
+  /** Delay between transcript re-checks (SQS DelaySeconds, 60–900). */
+  transcriptRecheckSeconds: number;
   /** Output-token budget per report generation (thinking tokens count toward it). */
   reportMaxOutputTokens: number;
   maxEditAttempts: number;
@@ -63,6 +69,9 @@ export function loadEnv(): AppEnv {
     platformNotifyScope: process.env.PLATFORM_REPORTS_NOTIFY_SCOPE?.trim() || 'platform/reports.notify',
     generationStateTable: required('GENERATION_STATE_TABLE'),
     maxGenerationAttempts: Number(process.env.MAX_GENERATION_ATTEMPTS ?? 3),
+    transcriptRecentHours: Number(process.env.TRANSCRIPT_WAIT_RECENT_HOURS ?? 24),
+    transcriptWaitMaxMinutes: Number(process.env.TRANSCRIPT_WAIT_MAX_MINUTES ?? 180),
+    transcriptRecheckSeconds: Math.min(900, Math.max(60, Number(process.env.TRANSCRIPT_RECHECK_SECONDS ?? 300))),
     reportMaxOutputTokens: Number(process.env.REPORT_MAX_OUTPUT_TOKENS ?? 16000),
     maxEditAttempts: Number(process.env.MAX_EDIT_ATTEMPTS ?? 3),
     bedrockModelId: process.env.BEDROCK_MODEL_ID ?? 'us.anthropic.claude-sonnet-5',

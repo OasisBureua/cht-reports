@@ -70,6 +70,7 @@ export class ReportDocService {
     }
 
     const notes = [
+      content.transcriptNote ?? null,
       content.inputCompletenessNote,
       omitted.length > 0 ? `Not included for lack of input data: ${omitted.join(', ')}.` : null,
     ].filter((n): n is string => Boolean(n));

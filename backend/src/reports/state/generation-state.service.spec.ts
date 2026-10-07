@@ -132,4 +132,30 @@ describe('GenerationStateService', () => {
     expect(update.ExpressionAttributeValues?.[':version']).toBe(1);
     expect(update.UpdateExpression).toContain('#version = :version');
   });
+
+  it('markWaiting parks the job, keeps the first waiting_since, and gives back the attempt', async () => {
+    ddbMock.on(QueryCommand).resolves({
+      Items: [{ campaign_id: '9', report_id: 'req-1', status: 'pulling_data', attempt_count: 2 }],
+    });
+    ddbMock.on(UpdateCommand).resolves({
+      Attributes: {
+        campaign_id: '9',
+        report_id: 'req-1',
+        status: 'waiting_for_transcript',
+        attempt_count: 1,
+        waiting_since: '2026-10-15T20:00:00.000Z',
+        created_at: '2026-10-15T19:00:00.000Z',
+        updated_at: '2026-10-15T20:00:00.000Z',
+      },
+    });
+
+    const state = await service().markWaiting('req-1');
+
+    expect(state.status).toBe('waiting_for_transcript');
+    expect(state.waitingSince).toBe('2026-10-15T20:00:00.000Z');
+    const update = ddbMock.commandCalls(UpdateCommand)[0].args[0].input;
+    expect(update.UpdateExpression).toContain('waiting_since = if_not_exists(waiting_since, :now)');
+    expect(update.ExpressionAttributeValues?.[':attempts']).toBe(1);
+    expect(update.ExpressionAttributeValues?.[':waiting']).toBe('waiting_for_transcript');
+  });
 });
