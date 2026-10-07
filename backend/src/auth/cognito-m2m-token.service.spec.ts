@@ -31,6 +31,27 @@ describe('CognitoM2mTokenService', () => {
     expect(String(init.body)).toBe('grant_type=client_credentials&scope=hub%2Freports.read');
   });
 
+  it('mints and caches one token per scope, and invalidates per scope', async () => {
+    const mockFetch = jest
+      .fn()
+      .mockResolvedValueOnce(tokenResponse('hub-1'))
+      .mockResolvedValueOnce(tokenResponse('notify-1'))
+      .mockResolvedValueOnce(tokenResponse('notify-2'));
+    global.fetch = mockFetch as unknown as typeof fetch;
+    const service = new CognitoM2mTokenService(testEnv);
+
+    expect(await service.getAccessToken()).toBe('hub-1');
+    expect(await service.getAccessToken('platform/reports.notify')).toBe('notify-1');
+    expect(String(mockFetch.mock.calls[1][1].body)).toBe(
+      'grant_type=client_credentials&scope=platform%2Freports.notify',
+    );
+
+    service.invalidate('platform/reports.notify');
+    expect(await service.getAccessToken()).toBe('hub-1');
+    expect(await service.getAccessToken('platform/reports.notify')).toBe('notify-2');
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+
   it('reuses the cached token until ~60s before expiry, then refreshes', async () => {
     jest.useFakeTimers({ now: new Date('2026-09-28T12:00:00Z') });
     const mockFetch = jest
@@ -91,7 +112,7 @@ describe('CognitoM2mTokenService', () => {
     global.fetch = jest.fn().mockRejectedValue(new Error('ECONNRESET')) as unknown as typeof fetch;
 
     await expect(new CognitoM2mTokenService(testEnv).getAccessToken()).rejects.toThrow(
-      'Unable to obtain Content Hub M2M token',
+      'Unable to obtain M2M token for hub/reports.read',
     );
   });
 

@@ -15,7 +15,9 @@ ECS service cht-reports-{env} (shared platform cluster, Service Connect)
    │  Content Hub GET /api/campaigns/{id}/report-packet
    │  cht-companion /generate
    ▼
-S3 reports bucket (KMS) ──► notify Lambda (CPR-35)
+S3 reports bucket (KMS, vN keys, Standard-IA after 30 days)
+   ▼
+cht-platform-tool POST /api/internal/reports/{id}/ready ──► SES email (CPR-35)
 ```
 
 ## Modules

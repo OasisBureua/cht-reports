@@ -92,8 +92,8 @@ module "ecr_lifecycle" {
 module "s3_reports" {
   source = "../../modules/storage/s3-reports"
 
-  resource_prefix = local.resource_prefix
-  environment     = var.environment
+  resource_prefix         = local.resource_prefix
+  environment             = var.environment
   kms_key_arn             = module.kms.s3_kms_key_arn
   force_destroy           = var.s3_force_destroy
   platform_tool_role_arns = var.platform_tool_role_arns
@@ -139,18 +139,6 @@ resource "aws_sqs_queue_policy" "report_requests_platform_tool" {
       },
     ]
   })
-}
-
-# Fired by the ECS service once a report is generated and uploaded to S3,
-# so CHT can notify whoever requested it. Separate from sns_alerts, which
-# is ops/CloudWatch-alarm only.
-module "sns_report_ready" {
-  source = "../../modules/messaging/sns-alerts"
-
-  resource_prefix           = "${local.resource_prefix}-report-ready"
-  environment               = var.environment
-  kms_key_arn               = module.kms.sns_kms_key_arn
-  alarm_notification_emails = []
 }
 
 # ============================================
@@ -346,8 +334,6 @@ module "iam" {
   s3_bucket_arn       = module.s3_reports.bucket_arn
   s3_kms_key_arn      = module.kms.s3_kms_key_arn
 
-  report_ready_topic_arn    = module.sns_report_ready.topic_arn
-  sns_kms_key_arn           = module.kms.sns_kms_key_arn
   report_requests_queue_arn = module.sqs_report_requests.queue_arn
   sqs_kms_key_arn           = module.kms.sqs_kms_key_arn
 
@@ -381,9 +367,12 @@ module "ecs_backend" {
     REPORTS_BUCKET            = module.s3_reports.bucket_id
     CONTENTHUB_BASE_URL       = var.contenthub_base_url
     REPORT_REQUESTS_QUEUE_URL = module.sqs_report_requests.queue_url
-    REPORT_READY_TOPIC_ARN    = module.sns_report_ready.topic_arn
     GENERATION_STATE_TABLE    = module.dynamodb.table_name
-    MAX_GENERATION_ATTEMPTS   = "5"
+    # Report-ready email (CPR-35): Platform sends it when told a version is
+    # ready. Token comes from the same M2M client as Hub, different scope.
+    PLATFORM_BASE_URL             = var.platform_api_base_url
+    PLATFORM_REPORTS_NOTIFY_SCOPE = var.platform_reports_notify_scope
+    MAX_GENERATION_ATTEMPTS       = "5"
   }
 
   secret_arns = merge(

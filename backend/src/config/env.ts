@@ -26,7 +26,14 @@ export interface AppEnv {
     scope: string;
   };
   reportRequestsQueueUrl: string;
-  reportReadyTopicArn: string;
+  /**
+   * cht-platform-tool API base (e.g. https://devapp.communityhealth.media/api).
+   * Platform emails the report's notify list when told a version is ready.
+   * Empty: notification is skipped (local dev, tests).
+   */
+  platformBaseUrl: string;
+  /** Scope on the same M2M client for POST /internal/reports/:id/ready. */
+  platformNotifyScope: string;
   generationStateTable: string;
   maxGenerationAttempts: number;
   /** Output-token budget per report generation (thinking tokens count toward it). */
@@ -52,7 +59,8 @@ export function loadEnv(): AppEnv {
       scope: process.env.CONTENTHUB_M2M_SCOPE?.trim() || 'hub/reports.read',
     },
     reportRequestsQueueUrl: required('REPORT_REQUESTS_QUEUE_URL'),
-    reportReadyTopicArn: required('REPORT_READY_TOPIC_ARN'),
+    platformBaseUrl: process.env.PLATFORM_BASE_URL?.trim().replace(/\/+$/, '') ?? '',
+    platformNotifyScope: process.env.PLATFORM_REPORTS_NOTIFY_SCOPE?.trim() || 'platform/reports.notify',
     generationStateTable: required('GENERATION_STATE_TABLE'),
     maxGenerationAttempts: Number(process.env.MAX_GENERATION_ATTEMPTS ?? 5),
     reportMaxOutputTokens: Number(process.env.REPORT_MAX_OUTPUT_TOKENS ?? 16000),

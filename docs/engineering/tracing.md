@@ -14,7 +14,7 @@ Platform creates the DynamoDB row and the SQS body `{ reportId, campaignId }`. T
 | SQS `cht-{env}-report-requests` | body `reportId` |
 | Worker logs / DDB status updates | `requestId` (same value) |
 | S3 | `reports/{campaignId}/{reportId}/vN.pdf` |
-| SNS report-ready | attribute `requestId` |
+| Platform report-ready call | path `/internal/reports/{reportId}/ready`, header `X-Request-Id` |
 | Hub packet GET | header `X-Request-Id` |
 | Companion `POST /generate` | header `X-Request-Id` (proposed) |
 
@@ -48,8 +48,11 @@ cht-reports ECS worker
   ▼
 S3  reports/{campaignId}/R/vN.pdf
   ▼
-notify Lambda (ObjectCreated) → SES
-  │  key already contains R; log it
+POST Platform /api/internal/reports/R/ready
+  │     X-Request-Id: R
+  │     Authorization: Bearer (M2M platform/reports.notify)
+  ▼
+Platform SES email (once per version)
 ```
 
 ## Contract (small)

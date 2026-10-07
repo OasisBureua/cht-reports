@@ -17,14 +17,33 @@ CHT Reports is an on-demand **SQS worker** on ECS Fargate (NestJS). The admin UI
        │  companion /generate (Sonnet)
        │  HTML → PDF
        ▼
-  S3 reports/{campaignId}/{reportId}/vN.pdf
-       │
+  S3 reports/{campaignId}/{reportId}/vN.pdf   (Standard-IA after 30 days)
+       │  UpdateItem DDB complete (s3_key_pdf, version)
        ▼
-  Lambda (ObjectCreated, prefix reports/, suffix .pdf) → SES
-       │
+  POST cht-platform-tool /api/internal/reports/{reportId}/ready
+       │  Bearer M2M platform/reports.notify
        ▼
-  Standard-IA after 7 days
+  Platform emails notify_emails via SES (once per version)
 ```
+
+### Report versions (CPR-35)
+
+Each report row keeps every version: `v1` is the first report, and each
+Regenerate writes the next one (`v2`, `v3`, ...). The worker takes the
+number from Platform's `edit_attempts` (version = edit_attempts + 1), so a
+retried attempt rewrites the same version instead of skipping one. Each
+version has its own `.pdf`, `.html`, `.json` and `.model.txt`. On complete
+the worker writes `s3_key_pdf` and `version`, which Platform shows and
+downloads.
+
+### Report-ready email (CPR-35)
+
+Platform sends it, like its other transactional email (same sender, layout
+and recipients from the row's `notify_emails`). After marking the job
+complete, the worker calls `POST {PLATFORM_BASE_URL}/internal/reports/{id}/ready`
+with `{ campaignId, version }`. Platform records the emailed version on the
+row, so retries do not double-send. A failed generate never reaches this
+call. A failed call is logged and retried, never fails the report.
 
 cht-reports has **no public or private ALB**. HTTP is health only (`/health`), for the ECS task check.
 
@@ -44,8 +63,8 @@ Response (camelCase): campaign identity, `hubspotRawData`, windowed `platformSli
 - DynamoDB generation-state **updates** (CHT PutItem)
 - Packet fetch from Content Hub `GET /api/campaigns/{id}/report-packet`
 - Generate-time transcript NLG cleaning (copy only)
-- HTML/PDF render and S3 artifact upload
-- S3 → SES notify Lambda
+- HTML/PDF render and versioned S3 artifact upload
+- Telling Platform a report version is ready (Platform sends the email)
 
 ## What other repos own
 
@@ -59,7 +78,7 @@ See:
 
 - ECS Fargate joins the shared platform cluster / Service Connect namespace (`cht-reports`).
 - Scale on SQS backlog, hard max on task count.
-- Lambda `generator` is notify-only (S3 event). It does not generate reports.
+- Lambda `generator` is an unused scaffold (it does not generate or notify). Removal touches CI, alarms and rollback, so it is tracked separately.
 - EventBridge scheduled generate is off unless explicitly enabled.
 
 ## Environments

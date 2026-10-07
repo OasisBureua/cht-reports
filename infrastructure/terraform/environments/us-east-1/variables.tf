@@ -52,6 +52,20 @@ variable "contenthub_api_key" {
   sensitive   = true
 }
 
+# cht-platform-tool API base for POST /internal/reports/{id}/ready (CPR-35):
+# Platform emails the report's notify list. Empty skips the notification.
+variable "platform_api_base_url" {
+  description = "cht-platform-tool API base, e.g. https://devapp.communityhealth.media/api"
+  type        = string
+  default     = ""
+}
+
+variable "platform_reports_notify_scope" {
+  description = "OAuth scope the reports M2M client requests for the report-ready call"
+  type        = string
+  default     = "platform/reports.notify"
+}
+
 # Unused by the ECS worker (packet comes from Content Hub). Kept so existing
 # GitHub TF_VAR_* / tfvars do not break until those secrets are retired.
 variable "platform_tool_base_url" {

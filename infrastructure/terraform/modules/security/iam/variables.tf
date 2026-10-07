@@ -25,15 +25,6 @@ variable "s3_kms_key_arn" {
   type        = string
 }
 
-variable "report_ready_topic_arn" {
-  type = string
-}
-
-variable "sns_kms_key_arn" {
-  description = "SNS encryption key (report-ready topic), from module.kms.sns_kms_key_arn."
-  type        = string
-}
-
 variable "report_requests_queue_arn" {
   type = string
 }

@@ -91,26 +91,6 @@ data "aws_iam_policy_document" "task_reports_io" {
   }
 
   statement {
-    sid       = "ReportReadyPublish"
-    actions   = ["sns:Publish"]
-    resources = [var.report_ready_topic_arn]
-  }
-
-  # SSE-KMS on the topic. Publish needs GenerateDataKey; Decrypt covers
-  # the service's use of the data key. Same ViaService pattern as S3.
-  statement {
-    sid       = "ReportReadyKms"
-    actions   = ["kms:Decrypt", "kms:GenerateDataKey"]
-    resources = [var.sns_kms_key_arn]
-
-    condition {
-      test     = "StringEquals"
-      variable = "kms:ViaService"
-      values   = ["sns.${data.aws_region.current.name}.amazonaws.com"]
-    }
-  }
-
-  statement {
     sid       = "ReportRequestsConsume"
     actions   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
     resources = [var.report_requests_queue_arn]
