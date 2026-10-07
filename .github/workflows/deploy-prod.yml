@@ -336,6 +336,13 @@ jobs:
 
             Comment **approve** to apply. Comment **deny** to cancel.
 
+      - name: Re-assume AWS role after approval
+        if: (needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true') && github.event.inputs.plan_only != 'true'
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
       - name: Terraform Apply
         if: (needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true') && github.event.inputs.plan_only != 'true'
         working-directory: ${{ env.TF_ENV_DIR }}
