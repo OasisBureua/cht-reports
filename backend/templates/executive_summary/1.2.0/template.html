@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>{{title}}</title>
+  <style>
+  @page { size: Letter; margin: 18mm 16mm; }
+  body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1c2430; line-height: 1.55; font-size: 11pt; margin: 0; }
+  main { max-width: 7.2in; margin: 0 auto; }
+  .cover { min-height: 8.6in; display: flex; flex-direction: column; justify-content: center; border-left: 6px solid #0f6e6e; padding-left: 28px; break-after: page; }
+  .cover .eyebrow { text-transform: uppercase; letter-spacing: 0.14em; color: #0f6e6e; font-weight: 700; font-size: 10pt; margin: 0 0 12px; }
+  .cover h1 { font-size: 30pt; line-height: 1.15; margin: 0 0 12px; }
+  .cover .subtitle { color: #55606e; font-size: 13pt; margin: 0 0 28px; }
+  .cover-facts { margin: 0 0 40px; }
+  .cover-facts div { display: flex; gap: 16px; padding: 6px 0; border-bottom: 1px solid #e3e7ec; }
+  .cover-facts dt { width: 170px; color: #55606e; }
+  .cover-facts dd { margin: 0; font-weight: 600; }
+  .confidential { color: #8a94a1; font-size: 9pt; }
+  .section { break-inside: auto; margin-bottom: 26px; }
+  h2 { font-size: 15pt; text-transform: uppercase; letter-spacing: 0.06em; color: #0f6e6e; border-bottom: 2px solid #0f6e6e; padding-bottom: 6px; margin: 30px 0 14px; break-after: avoid; }
+  h3 { font-size: 11.5pt; margin: 16px 0 4px; break-after: avoid; }
+  p { margin: 6px 0 10px; }
+  .claim { break-inside: avoid; }
+  .objectives li, .themes li { margin-bottom: 8px; }
+  .kols { list-style: none; padding: 0; }
+  .kols li { padding: 8px 0; border-bottom: 1px solid #e3e7ec; }
+  .kols span { display: block; color: #55606e; }
+  blockquote { margin: 12px 0; padding: 10px 16px; border-left: 3px solid #0f6e6e; background: #f3f7f7; break-inside: avoid; }
+  blockquote p { margin: 0 0 4px; font-style: italic; }
+  cite { font-style: normal; font-weight: 600; color: #55606e; }
+  .insights div { padding: 8px 0; border-bottom: 1px solid #e3e7ec; break-inside: avoid; }
+  .insights dt { font-weight: 700; }
+  .insights dd { margin: 2px 0 0; }
+  .recommendation { background: #f3f7f7; padding: 8px 12px; }
+  .survey-chart { margin: 14px 0 20px; break-inside: avoid; }
+  .survey-chart figcaption span { color: #55606e; font-size: 9.5pt; margin-left: 6px; }
+  .survey-chart svg .opt, .survey-chart svg .pct { font-size: 12px; fill: #1c2430; font-family: inherit; }
+  .survey-chart svg .bar { fill: #0f6e6e; }
+  .note { color: #55606e; font-size: 9.5pt; }
+  .attendee-facts { display: flex; gap: 12px; margin: 0 0 18px; }
+  .attendee-facts div { flex: 1; background: #f3f7f7; padding: 10px 14px; }
+  .attendee-facts dt { color: #55606e; font-size: 9.5pt; }
+  .attendee-facts dd { margin: 2px 0 0; font-size: 16pt; font-weight: 700; color: #0f6e6e; }
+  .counts { width: 100%; border-collapse: collapse; margin: 10px 0 18px; break-inside: avoid; }
+  .counts caption { text-align: left; font-weight: 700; padding-bottom: 6px; }
+  .counts th, .counts td { text-align: left; padding: 5px 8px; border-bottom: 1px solid #e3e7ec; }
+  .counts th:last-child, .counts td:last-child { text-align: right; width: 90px; }
+  .counts th { color: #55606e; font-weight: 600; font-size: 9.5pt; }
+  .input-completeness { color: #55606e; font-size: 9.5pt; margin-top: 36px; }
+  .input-completeness h2 { font-size: 11pt; color: #55606e; border-color: #c9d0d8; }
+  </style>
+</head>
+<body>
+  <main>
+{{cover}}
+{{sections}}
+{{inputCompleteness}}
+  </main>
+</body>
+</html>

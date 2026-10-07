@@ -1,4 +1,5 @@
-import { ReportGenerationOrchestrator } from './orchestrator';
+import { QA_CAPTURE_NOTE, ReportGenerationOrchestrator } from './orchestrator';
+import type { ExecutiveSummaryContent } from './content/executive-summary';
 import type { ContentHubClient } from './packet/content-hub.client';
 import type { CompanionClient } from '../companion/companion.client';
 import type { ReportDocService } from './render/report-doc.service';
@@ -7,7 +8,7 @@ import type { ReportReadyNotifier } from './notify/report-ready.service';
 import type { GenerationState, GenerationStateService } from './state/generation-state.service';
 import type { TemplateStore } from './templates/template-store.service';
 import type { ReportRequestQueue } from './queue/report-request-queue.service';
-import type { ReportPacketSession } from './packet/report-packet.types';
+import type { ReportInputPacket, ReportPacketSession } from './packet/report-packet.types';
 import { testEnv } from '../config/test-env';
 
 function stateRow(overrides: Partial<GenerationState> = {}): GenerationState {
@@ -184,5 +185,110 @@ describe('ReportGenerationOrchestrator', () => {
       expect(queue.requeue).not.toHaveBeenCalled();
       expect(generate).toHaveBeenCalled();
     });
+  });
+});
+
+describe('report content from the packet (CPR-46)', () => {
+  const narrative = JSON.stringify({
+    programTitle: 'HER2-Low',
+    kols: [{ name: 'Dr. Heard Wrong', affiliation: 'Somewhere' }],
+  });
+
+  function build() {
+    const companion = {
+      generate: jest.fn().mockResolvedValue({ text: narrative, finishReason: 'complete', tokensInput: 1, tokensOutput: 1 }),
+    };
+    const orchestrator = new ReportGenerationOrchestrator(
+      {} as unknown as ContentHubClient,
+      companion as unknown as CompanionClient,
+      {} as unknown as ReportDocService,
+      { saveModelReply: jest.fn() } as unknown as ReportStorageService,
+      {} as unknown as ReportReadyNotifier,
+      {} as unknown as GenerationStateService,
+      {} as unknown as TemplateStore,
+      {} as unknown as ReportRequestQueue,
+      testEnv,
+    );
+    const run = (packet: Partial<ReportInputPacket>) =>
+      (
+        orchestrator as unknown as {
+          generateContent: (p: ReportInputPacket, s: string, r: string, v: number) => Promise<ExecutiveSummaryContent>;
+        }
+      ).generateContent(
+        {
+          campaignId: 9,
+          campaignName: 'F&F',
+          windowStart: null,
+          windowEnd: null,
+          sources: [],
+          hubspotRawData: null,
+          platformSlices: [],
+          sessions: [],
+          surveyResponses: [],
+          inputCompleteness: {},
+          ...packet,
+        },
+        'prompt',
+        'rep-1',
+        1,
+      );
+    return { companion, run };
+  }
+
+  it('uses Hub KOLs over the transcript and gives them to the model', async () => {
+    const { companion, run } = build();
+    const content = await run({ kols: [{ name: 'Dr. Ana Ruiz', title: 'MD', institution: 'Dana-Farber' }] });
+
+    expect(content.kols).toEqual([{ name: 'Dr. Ana Ruiz', affiliation: 'MD, Dana-Farber' }]);
+    expect(content.kolSource).toBe('hub');
+    expect(companion.generate.mock.calls[0][0].userContent).toContain('Faculty (Content Hub):\nDr. Ana Ruiz, MD, Dana-Farber');
+  });
+
+  it('falls back to the transcript KOLs when Hub has none', async () => {
+    const { run } = build();
+    const content = await run({});
+
+    expect(content.kols).toEqual([{ name: 'Dr. Heard Wrong', affiliation: 'Somewhere' }]);
+    expect(content.kolSource).toBe('transcript');
+  });
+
+  it('builds attendees and sends counts, not names, to the model', async () => {
+    const { companion, run } = build();
+    const content = await run({
+      registeredCount: 10,
+      attendedCount: 1,
+      avgMinutesWatched: 30,
+      attendees: [{ specialty: 'Oncology', institution: 'UCSF', minutesWatched: 30 }],
+    });
+
+    expect(content.attendees).toMatchObject({ registered: 10, attended: 1, avgMinutesWatched: 30 });
+    expect(companion.generate.mock.calls[0][0].userContent).toContain('Attendees by specialty: Oncology (n=1)');
+  });
+
+  it('labels charts from the feedback survey schema only', async () => {
+    const { run } = build();
+    const content = await run({
+      surveyResponses: [
+        { respondentId: null, source: 'native', surveyType: 'FEEDBACK', submittedAt: null, answers: { q1: 'Yes' } },
+      ],
+      surveyQuestions: [
+        { id: 'q1', prompt: 'Intake question', type: 'single_choice', options: ['Yes', 'No'], surveyType: 'INTAKE' },
+        { id: 'q1', prompt: 'Was this useful?', type: 'single_choice', options: ['Yes', 'No'], surveyType: 'FEEDBACK' },
+      ],
+    });
+
+    expect(content.surveyCharts[0].question).toBe('Was this useful?');
+    expect(content.surveyCharts[0].options).toEqual([
+      { label: 'Yes', count: 1 },
+      { label: 'No', count: 0 },
+    ]);
+  });
+
+  it('sets the Q&A note only for Zoom sessions', async () => {
+    const { run } = build();
+    expect((await run({ sessions: [session({ transcriptText: 'x' })] })).qaNote).toBe(QA_CAPTURE_NOTE);
+    expect(
+      (await run({ sessions: [session({ platformToolProgramId: null, zoomMeetingUuid: null, transcriptText: 'x' })] })).qaNote,
+    ).toBeNull();
   });
 });
