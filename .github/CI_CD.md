@@ -26,6 +26,10 @@ Docs-only changes under `docs/**` do not trigger deploy.
 
 Manual **Run workflow** has `deploy_all` (default off) to force every lane.
 
+## Terraform apply approval
+
+Deploys stop after `terraform plan` and open a GitHub issue. Only the user who triggered the run (usually whoever merged) can approve it: comment **approve** on the issue. The run waits up to 2 hours. The AWS role is re-assumed after approval, so a slow approval no longer fails the apply on expired credentials.
+
 ## Branch flow
 
 ```text
