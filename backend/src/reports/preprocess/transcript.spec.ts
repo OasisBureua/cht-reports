@@ -39,6 +39,15 @@ describe('splitPrerecordedLivestream', () => {
     expect(result.prerecorded).toBe(combined);
   });
 
+  it('skips a Q&A mention in the introduction and splits at the real Q&A', () => {
+    const intro = `Welcome. We will save time for Q&A at the end. ${Array(40).fill('intro').join(' ')}`;
+    const talk = Array(200).fill('talk').join(' ');
+    const qa = `Let's open it up for questions from the audience. ${Array(80).fill('answer').join(' ')}`;
+    const result = splitPrerecordedLivestream(`${intro}\n${talk}\n${qa}`);
+    expect(result.prerecorded.startsWith('Welcome. We will save time for Q&A')).toBe(true);
+    expect(result.livestream?.startsWith("Let's open it up for questions")).toBe(true);
+  });
+
   it('does not split when no marker is present', () => {
     const combined = Array(200).fill('word').join(' ');
     const result = splitPrerecordedLivestream(combined);

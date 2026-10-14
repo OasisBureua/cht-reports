@@ -26,7 +26,11 @@ describe('parseNarrative', () => {
         conclusions: [{ claim: 'C', body: 'D' }],
       }),
     );
-    expect(n.executiveSummary).toEqual([{ claim: 'A', body: 'B' }]);
+    // Executive summary items are headlines; the body is optional.
+    expect(n.executiveSummary).toEqual([
+      { claim: 'A', body: 'B' },
+      { claim: 'no body', body: '' },
+    ]);
     expect(n.quotes).toEqual([{ text: 'ok', speaker: 'Dr. Y' }]);
     expect(n.conclusions).toEqual([{ claim: 'C', body: 'D', recommendation: null }]);
   });
@@ -35,6 +39,31 @@ describe('parseNarrative', () => {
     const n = parseNarrative('{"quotes":[{"text":"It was "amazing" to see","speaker":"Dr. Yan"}],"objectives":["Review A","Review');
     expect(n.quotes).toEqual([{ text: 'It was "amazing" to see', speaker: 'Dr. Yan' }]);
     expect(n.objectives[0]).toBe('Review A');
+  });
+
+  it('reads the 1.3.0 keys', () => {
+    const n = parseNarrative(
+      JSON.stringify({
+        objectives: [{ title: 'Review A', detail: 'Covered B.' }, { title: 'Discuss C' }, 'Plain string'],
+        overviewHighlights: ['Topic one', ''],
+        quotes: [
+          { text: 'q1', speaker: 'Dr. X', source: 'faculty' },
+          { text: 'q2', speaker: 'Attendee', source: 'attendee' },
+          { text: 'q3', speaker: 'Dr. Y', source: 'other' },
+        ],
+        surveyTakeaways: [{ theme: 'T', points: ['63% (n=8) said so.'] }, { theme: 'Empty', points: [] }],
+        nextSteps: [{ claim: 'Do X', body: 'Because Y.' }],
+      }),
+    );
+    expect(n.objectives).toEqual([{ title: 'Review A', detail: 'Covered B.' }, { title: 'Discuss C', detail: null }, 'Plain string']);
+    expect(n.overviewHighlights).toEqual(['Topic one']);
+    expect(n.quotes).toEqual([
+      { text: 'q1', speaker: 'Dr. X', source: 'faculty' },
+      { text: 'q2', speaker: 'Attendee', source: 'attendee' },
+      { text: 'q3', speaker: 'Dr. Y' },
+    ]);
+    expect(n.surveyTakeaways).toEqual([{ theme: 'T', points: ['63% (n=8) said so.'] }]);
+    expect(n.nextSteps).toEqual([{ claim: 'Do X', body: 'Because Y.' }]);
   });
 
   it('throws when there is no JSON object', () => {

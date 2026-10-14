@@ -22,9 +22,23 @@ export interface Kol {
   affiliation: string | null;
 }
 
+/** A short title with an optional supporting sentence (objectives). */
+export interface Point {
+  title: string;
+  detail: string | null;
+}
+
 export interface Quote {
   text: string;
   speaker: string;
+  /** Who said it: faculty in the recording, or an attendee in the survey. */
+  source?: 'faculty' | 'attendee';
+}
+
+/** Survey Result Takeaways: a theme with findings quoting the computed results. */
+export interface SurveyTakeaway {
+  theme: string;
+  points: string[];
 }
 
 export interface Theme {
@@ -49,19 +63,28 @@ export type ProgramFormat = 'pre_recorded' | 'live_webinar' | 'pre_recorded_and_
 
 export interface GeneratedNarrative {
   programTitle: string | null;
-  /** What the recording shows; overrides the transcript-marker heuristic. */
+  /** Template 1.2.0 and earlier only; the report's format now comes from the sessions. */
   format: ProgramFormat | null;
+  /** Headline claims; `body` is empty from template 1.3.0 on. */
   executiveSummary: Claim[];
-  objectives: string[];
+  /** Strings up to template 1.2.0, Points from 1.3.0. */
+  objectives: (string | Point)[];
   kols: Kol[];
   overview: string[];
+  /** Short topic phrases for the overview tiles (1.3.0). */
+  overviewHighlights: string[];
   keyTakeaways: Claim[];
   quotes: Quote[];
   conversationSummary: Claim[];
   hcpEngagementThemes: Theme[];
   questionSummaries: Theme[];
   audienceInsights: Insight[];
+  /** 1.3.0. */
+  surveyTakeaways: SurveyTakeaway[];
+  /** Strategic takeaways for the client. */
   conclusions: Conclusion[];
+  /** 1.3.0: Conclusion & Actionable Next Steps. */
+  nextSteps: Claim[];
 }
 
 export interface SurveyChartOption {
@@ -82,13 +105,27 @@ export interface CountRow {
   count: number;
 }
 
-/** CPR-46 Attendees section. Counts only, no names. */
+/** One attendee row: specialty and practice, never a name. */
+export interface AttendeeRow {
+  specialty: string;
+  institution: string;
+}
+
+/** CPR-46 Attendees section. No names. */
 export interface AttendeesSummary {
   registered: number | null;
   attended: number | null;
   avgMinutesWatched: number | null;
   bySpecialty: CountRow[];
   byInstitution: CountRow[];
+  /** One row per attendee, sorted by specialty then institution. */
+  rows?: AttendeeRow[];
+}
+
+/** Free-text answers to one survey question, contact details redacted. */
+export interface SurveyFreeText {
+  question: string;
+  answers: string[];
 }
 
 export interface SessionSummary {
@@ -102,10 +139,18 @@ export type ReportVariant = 'pre_record_and_webinar' | 'webinar_only' | 'pre_rec
 export interface ExecutiveSummaryContent {
   title: string;
   campaignName: string;
+  /** The program's format, from the sessions (Zoom webinar vs studio recording). */
   variant: ReportVariant;
+  /** True when the transcript has a live audience Q&A part. */
+  hasQa?: boolean;
+  /** When the report was generated (ISO). */
+  generatedAt?: string;
   sessions: SessionSummary[];
   narrative: GeneratedNarrative;
   surveyCharts: SurveyChart[];
+  /** Feedback survey responses the report used. */
+  surveyResponseCount?: number;
+  surveyFreeText?: SurveyFreeText[];
   /** Hub KOL records when the packet has them; otherwise the model's, from the recording. */
   kols: Kol[];
   kolSource: 'hub' | 'transcript';
@@ -119,22 +164,30 @@ export interface ExecutiveSummaryContent {
 
 export class NarrativeParseError extends Error {}
 
+/** A narrative with every list present: content from older templates lacks the newer keys. */
+export function withNarrativeDefaults(narrative: Partial<GeneratedNarrative>): GeneratedNarrative {
+  return { ...EMPTY_NARRATIVE, ...narrative } as GeneratedNarrative;
+}
+
 const FORMATS = new Set<ProgramFormat>(['pre_recorded', 'live_webinar', 'pre_recorded_and_live']);
 
-const EMPTY: GeneratedNarrative = {
+const EMPTY_NARRATIVE: GeneratedNarrative = {
   programTitle: null,
   format: null,
   executiveSummary: [],
   objectives: [],
   kols: [],
   overview: [],
+  overviewHighlights: [],
   keyTakeaways: [],
   quotes: [],
   conversationSummary: [],
   hcpEngagementThemes: [],
   questionSummaries: [],
   audienceInsights: [],
+  surveyTakeaways: [],
   conclusions: [],
+  nextSteps: [],
 };
 
 function str(value: unknown): string | null {
@@ -158,6 +211,28 @@ function claims(value: unknown): Claim[] {
     const body = str(o.body);
     return claim && body ? { claim, body } : null;
   });
+}
+
+/** Headline claims: the body is optional (template 1.3.0 asks for headlines only). */
+function headlines(value: unknown): Claim[] {
+  return list(value, (o) => {
+    const claim = str(o.claim);
+    return claim ? { claim, body: str(o.body) ?? '' } : null;
+  });
+}
+
+/** Objectives: plain strings (up to 1.2.0) or {title, detail} (1.3.0). */
+function objectives(value: unknown): (string | Point)[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item): string | Point | null => {
+      if (typeof item === 'string') return str(item);
+      if (!item || typeof item !== 'object') return null;
+      const o = item as Record<string, unknown>;
+      const title = str(o.title);
+      return title ? { title, detail: str(o.detail) } : null;
+    })
+    .filter((item): item is string | Point => item !== null);
 }
 
 function themes(value: unknown): Theme[] {
@@ -219,21 +294,23 @@ export function parseNarrative(text: string): GeneratedNarrative {
   }
 
   return {
-    ...EMPTY,
+    ...EMPTY_NARRATIVE,
     programTitle: str(raw.programTitle),
     format: FORMATS.has(raw.format as ProgramFormat) ? (raw.format as ProgramFormat) : null,
-    executiveSummary: claims(raw.executiveSummary),
-    objectives: strings(raw.objectives),
+    executiveSummary: headlines(raw.executiveSummary),
+    objectives: objectives(raw.objectives),
     kols: list(raw.kols, (o) => {
       const name = str(o.name);
       return name ? { name, affiliation: str(o.affiliation) } : null;
     }),
     overview: strings(raw.overview),
+    overviewHighlights: strings(raw.overviewHighlights),
     keyTakeaways: claims(raw.keyTakeaways),
     quotes: list(raw.quotes, (o) => {
       const text = str(o.text);
       const speaker = str(o.speaker);
-      return text && speaker ? { text, speaker } : null;
+      if (!text || !speaker) return null;
+      return o.source === 'faculty' || o.source === 'attendee' ? { text, speaker, source: o.source } : { text, speaker };
     }),
     conversationSummary: claims(raw.conversationSummary),
     hcpEngagementThemes: themes(raw.hcpEngagementThemes),
@@ -243,10 +320,16 @@ export function parseNarrative(text: string): GeneratedNarrative {
       const body = str(o.body);
       return label && body ? { label, body } : null;
     }),
+    surveyTakeaways: list(raw.surveyTakeaways, (o) => {
+      const theme = str(o.theme);
+      const points = strings(o.points);
+      return theme && points.length ? { theme, points } : null;
+    }),
     conclusions: list(raw.conclusions, (o) => {
       const claim = str(o.claim);
       const body = str(o.body);
       return claim && body ? { claim, body, recommendation: str(o.recommendation) } : null;
     }),
+    nextSteps: claims(raw.nextSteps),
   };
 }

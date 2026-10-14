@@ -10,7 +10,7 @@
  */
 
 import type { ReportPacketSurveyQuestion } from '../packet/report-packet.types';
-import type { SurveyChart } from './executive-summary';
+import type { SurveyChart, SurveyFreeText } from './executive-summary';
 
 const CHOICE_TYPES = new Set(['single_choice', 'multi_choice']);
 
@@ -99,4 +99,48 @@ export function buildSurveyCharts(
         options: [...ordered, ...byCount.filter((o) => !listed.has(o.label))],
       };
     });
+}
+
+const TEXT_TYPES = new Set(['text', 'long_text']);
+
+/**
+ * Free-text answers per question, for the report's verbatim comments page.
+ * Uses the schema's text questions; without a schema, answers that read as
+ * sentences. Callers pass redacted answers (preprocess/survey.ts).
+ */
+export function buildSurveyFreeText(
+  answerSets: Record<string, unknown>[],
+  questions: ReportPacketSurveyQuestion[] = [],
+): SurveyFreeText[] {
+  const schema = new Map(questions.map((q) => [q.id, q]));
+  const byKey = new Map<string, string[]>();
+  for (const answers of answerSets) {
+    for (const [key, value] of Object.entries(answers)) {
+      if (typeof value !== 'string' || !value.trim()) continue;
+      const q = schema.get(key);
+      const isText = q ? TEXT_TYPES.has(q.type) : value.trim().length > MAX_OPTION_LENGTH;
+      if (!isText) continue;
+      byKey.set(key, [...(byKey.get(key) ?? []), value.trim()]);
+    }
+  }
+  const position = new Map(questions.map((q, i) => [q.id, i]));
+  return [...byKey.entries()]
+    .sort(
+      ([a], [b]) =>
+        (position.get(a) ?? Number.MAX_SAFE_INTEGER) - (position.get(b) ?? Number.MAX_SAFE_INTEGER) ||
+        questionOrder(a) - questionOrder(b),
+    )
+    .map(([key, answers]) => ({ question: schema.get(key)?.prompt.trim() || questionLabel(key), answers }));
+}
+
+/** Computed survey results for the model, so every percentage it quotes is exact. */
+export function surveyResultsContext(charts: SurveyChart[]): string {
+  return charts
+    .map((c) => {
+      const options = c.options
+        .map((o) => `${o.label}: ${o.count} (${c.responses ? Math.round((o.count / c.responses) * 100) : 0}%)`)
+        .join('; ');
+      return `${c.question} (n=${c.responses}${c.multiSelect ? ', multiple answers allowed, % of respondents' : ''}): ${options}`;
+    })
+    .join('\n');
 }
