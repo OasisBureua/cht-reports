@@ -5,7 +5,7 @@
  */
 
 import type { ReportInputPacket } from '../packet/report-packet.types';
-import type { AttendeesSummary, CountRow } from './executive-summary';
+import type { AttendeeRow, AttendeesSummary, CountRow } from './executive-summary';
 
 /** Institutions beyond this many are grouped as "Other institutions". */
 const MAX_INSTITUTIONS = 10;
@@ -41,7 +41,10 @@ export function buildAttendeesSummary(packet: ReportInputPacket): AttendeesSumma
   const attendees = packet.attendees ?? [];
   const registered = num(packet.registeredCount);
   const attended = num(packet.attendedCount) ?? (attendees.length || null);
-  const avgMinutesWatched = num(packet.avgMinutesWatched);
+  // Hub reports 0 when it has no watch-time rows (only Zoom's attendee report
+  // carries minutes). Nobody attends for 0 minutes on average: treat it as unknown.
+  const minutes = num(packet.avgMinutesWatched);
+  const avgMinutesWatched = minutes !== null && minutes > 0 ? minutes : null;
   if (registered === null && attended === null && attendees.length === 0) return null;
 
   return {
@@ -53,7 +56,20 @@ export function buildAttendeesSummary(packet: ReportInputPacket): AttendeesSumma
       count(attendees.map((a) => a.institution)),
       MAX_INSTITUTIONS,
     ),
+    rows: attendeeRows(attendees),
   };
+}
+
+function attendeeRows(attendees: NonNullable<ReportInputPacket['attendees']>): AttendeeRow[] {
+  return attendees
+    .map((a) => ({ specialty: a.specialty?.trim() || NOT_PROVIDED, institution: a.institution?.trim() || NOT_PROVIDED }))
+    .sort(
+      (a, b) =>
+        Number(a.specialty === NOT_PROVIDED) - Number(b.specialty === NOT_PROVIDED) ||
+        a.specialty.localeCompare(b.specialty) ||
+        Number(a.institution === NOT_PROVIDED) - Number(b.institution === NOT_PROVIDED) ||
+        a.institution.localeCompare(b.institution),
+    );
 }
 
 /** Plain-text summary for the model: counts only. */

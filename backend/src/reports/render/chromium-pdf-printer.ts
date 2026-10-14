@@ -24,7 +24,8 @@ export class ChromiumPdfPrinter implements PdfPrinter {
     try {
       const page = await browser.newPage();
       await page.setContent(html, { waitUntil: 'load' });
-      const pdf = await page.pdf({ format: 'A4', printBackground: true });
+      // The template's @page size wins (1.3.0 is a 16:9 deck); A4 when it sets none.
+      const pdf = await page.pdf({ format: 'A4', printBackground: true, preferCSSPageSize: true });
       return Buffer.from(pdf);
     } finally {
       await browser.close();

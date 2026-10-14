@@ -46,7 +46,25 @@ describe('buildAttendeesSummary', () => {
         { label: 'UCSF', count: 1 },
         { label: NOT_PROVIDED, count: 1 },
       ],
+      rows: [
+        { specialty: 'Oncology', institution: 'Mayo Clinic' },
+        { specialty: 'Oncology', institution: 'UCSF' },
+        { specialty: 'Pathology', institution: 'Mayo Clinic' },
+        { specialty: NOT_PROVIDED, institution: NOT_PROVIDED },
+      ],
     });
+  });
+
+  it('treats an average of 0 minutes watched as unknown', () => {
+    // Hub sends 0 when it has no watch-time rows (no Zoom attendee report).
+    const summary = buildAttendeesSummary({
+      ...base,
+      attendedCount: 2,
+      avgMinutesWatched: 0,
+      attendees: [{ specialty: 'Oncology', institution: 'UCSF', minutesWatched: null }],
+    });
+    expect(summary?.avgMinutesWatched).toBeNull();
+    expect(attendeesContext(summary)).not.toContain('minutes');
   });
 
   it('groups institutions past the top ten', () => {

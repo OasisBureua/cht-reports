@@ -76,16 +76,23 @@ const QA_MARKERS = [
   /audience\s+questions/i,
 ];
 
+/**
+ * Markers in the opening part of a session are housekeeping ("we'll save
+ * time for Q&A at the end"), not the start of the Q&A.
+ */
+export const QA_SEARCH_FROM = 0.2;
+
 export function splitPrerecordedLivestream(
   rawText: string,
 ): { prerecorded: string; livestream: string | null } {
+  const from = Math.floor(rawText.length * QA_SEARCH_FROM);
   let earliestPos: number | null = null;
   for (const marker of QA_MARKERS) {
-    const match = rawText.match(marker);
-    if (match && match.index !== undefined) {
-      if (earliestPos === null || match.index < earliestPos) {
-        earliestPos = match.index;
-      }
+    const global = new RegExp(marker.source, `${marker.flags.replace('g', '')}g`);
+    for (const match of rawText.matchAll(global)) {
+      if (match.index < from) continue;
+      if (earliestPos === null || match.index < earliestPos) earliestPos = match.index;
+      break;
     }
   }
 

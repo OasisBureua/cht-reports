@@ -7,7 +7,8 @@ the report packet carries that pointer as `template`.
 ```
 templates/{type}/{semver}/
   system-prompt.md   system prompt sent to companion /generate
-  template.html      HTML skeleton; placeholders {{title}}, {{sections}}, {{inputCompleteness}}
+  template.html      HTML skeleton; placeholders {{title}}, {{cover}}, {{sections}},
+                     {{closing}}, {{reportDate}}, {{inputCompleteness}}
 ```
 
 - The dev deploy (backend lane) syncs `backend/templates/` to
@@ -18,4 +19,8 @@ templates/{type}/{semver}/
 - If the pointer is missing or the files can't be read, the worker uses the
   built-in Executive Summary prompt/HTML (`src/reports/templates/builtin.ts`)
   and notes it in the report's input-completeness section.
-- `1.0.0` must stay identical to the built-in version; a unit test checks this.
+- The built-in copy matches the newest version (1.3.0); `builtin.spec.ts` checks it.
+- 1.3.0 is a 16:9 slide deck in CHM's brand (Brand Guidelines v1.4). Its
+  `template.html` is built from `scripts/local/template-src/` (fonts and logo
+  embedded); edit the source and run `build.js`, which also regenerates
+  `builtin.ts`. See `scripts/local/README.md`.

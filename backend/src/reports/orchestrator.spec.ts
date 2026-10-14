@@ -284,6 +284,39 @@ describe('report content from the packet (CPR-46)', () => {
     ]);
   });
 
+  it('takes the format from the sessions: Zoom is a live webinar, a studio shoot is pre-recorded', async () => {
+    const { companion, run } = build();
+    const qa = `Welcome, we will take Q&A at the end. ${'talk '.repeat(300)}\nLet's open it up for questions. ${'answer '.repeat(80)}`;
+    const live = await run({ sessions: [session({ transcriptText: qa })] });
+    expect(live.variant).toBe('webinar_only');
+    expect(live.hasQa).toBe(true);
+    expect(companion.generate.mock.calls[0][0].userContent).toContain('Program format: live webinar, with live audience Q&A');
+
+    const shoot = await run({ sessions: [session({ platformToolProgramId: null, zoomMeetingUuid: null, transcriptText: 'talk' })] });
+    expect(shoot.variant).toBe('pre_record_only');
+    expect(shoot.hasQa).toBe(false);
+  });
+
+  it('gives the model the computed survey results and keeps free-text answers for the report', async () => {
+    const { companion, run } = build();
+    const content = await run({
+      surveyResponses: [
+        { respondentId: null, source: 'native', surveyType: 'FEEDBACK', submittedAt: null, answers: { q1: 'Yes', q2: 'Call me at 555-123-4567' } },
+        { respondentId: null, source: 'native', surveyType: 'FEEDBACK', submittedAt: null, answers: { q1: 'No', q2: '' } },
+      ],
+      surveyQuestions: [
+        { id: 'q1', prompt: 'Was this useful?', type: 'single_choice', options: ['Yes', 'No'], surveyType: 'FEEDBACK' },
+        { id: 'q2', prompt: 'Anything else?', type: 'long_text', options: null, surveyType: 'FEEDBACK' },
+      ],
+    });
+    expect(companion.generate.mock.calls[0][0].userContent).toContain(
+      'Survey results (computed; quote these numbers exactly):\nWas this useful? (n=2): Yes: 1 (50%); No: 1 (50%)',
+    );
+    expect(content.surveyResponseCount).toBe(2);
+    expect(content.surveyFreeText).toEqual([{ question: 'Anything else?', answers: ['Call me at [phone]'] }]);
+    expect(content.generatedAt).toBeTruthy();
+  });
+
   it('sets the Q&A note only for Zoom sessions', async () => {
     const { run } = build();
     expect((await run({ sessions: [session({ transcriptText: 'x' })] })).qaNote).toBe(QA_CAPTURE_NOTE);

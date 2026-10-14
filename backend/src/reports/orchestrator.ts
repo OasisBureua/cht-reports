@@ -21,7 +21,7 @@ import type { ReportInputPacket } from './packet/report-packet.types';
 import { ReportDocService } from './render/report-doc.service';
 import { parseNarrative, type ExecutiveSummaryContent, type Kol } from './content/executive-summary';
 import { attendeesContext, buildAttendeesSummary } from './content/attendees';
-import { buildSurveyCharts } from './content/survey-charts';
+import { buildSurveyCharts, buildSurveyFreeText, surveyResultsContext } from './content/survey-charts';
 import { ReportStorageService, reportVersion } from './storage/report-storage.service';
 import { ReportReadyNotifier } from './notify/report-ready.service';
 import { GenerationStateService } from './state/generation-state.service';
@@ -46,6 +46,24 @@ export function hubKols(packet: ReportInputPacket): Kol[] {
       affiliation: [k.title, k.institution].map((v) => v?.trim()).filter(Boolean).join(', ') || null,
     }));
 }
+
+/**
+ * The program's format, from what the sessions are: a Zoom session is a live
+ * webinar; a studio shoot (no Zoom ids) is a pre-recorded conversation.
+ */
+export function programVariant(packet: ReportInputPacket): ExecutiveSummaryContent['variant'] {
+  const isZoom = (s: ReportInputPacket['sessions'][number]) => Boolean(s.zoomMeetingUuid || s.platformToolProgramId);
+  const live = packet.sessions.some(isZoom);
+  const recorded = packet.sessions.some((s) => !isZoom(s));
+  if (live && recorded) return 'pre_record_and_webinar';
+  return live ? 'webinar_only' : 'pre_record_only';
+}
+
+const VARIANT_LABEL: Record<ExecutiveSummaryContent['variant'], string> = {
+  webinar_only: 'live webinar',
+  pre_record_only: 'pre-recorded conversation',
+  pre_record_and_webinar: 'pre-recorded conversation and live webinar',
+};
 
 export interface ReportRequest {
   requestId: string;
@@ -163,14 +181,8 @@ export class ReportGenerationOrchestrator {
       return { ...session, prerecorded, livestream };
     });
 
-    const hasLivestream = cleanedSessions.some((s) => s.livestream !== null);
-    const hasPrerecorded = cleanedSessions.some((s) => s.prerecorded.trim().length > 0);
-    const variant: ExecutiveSummaryContent['variant'] =
-      hasPrerecorded && hasLivestream
-        ? 'pre_record_and_webinar'
-        : hasLivestream
-          ? 'webinar_only'
-          : 'pre_record_only';
+    const hasQa = cleanedSessions.some((s) => s.livestream !== null);
+    const variant = programVariant(packet);
 
     const transcriptContext = cleanedSessions
       .map(
@@ -193,6 +205,7 @@ export class ReportGenerationOrchestrator {
     const surveyQuestions = (packet.surveyQuestions ?? []).filter(
       (q) => !q.surveyType || REPORT_SURVEY_TYPES.has(q.surveyType.toUpperCase()),
     );
+    const surveyCharts = buildSurveyCharts(surveyAnswers, surveyQuestions);
     const questionContext = surveyQuestions
       .filter((q) => q.type !== 'info')
       .map((q) => `${q.id}: ${q.prompt}${q.options?.length ? ` [${q.options.join(' | ')}]` : ''}`)
@@ -201,9 +214,11 @@ export class ReportGenerationOrchestrator {
     const userContent = fitToLimit(
       [
         `Campaign: ${packet.campaignName ?? `Campaign ${packet.campaignId}`}`,
+        `Program format: ${VARIANT_LABEL[variant]}${hasQa ? ', with live audience Q&A' : ''}`,
         `Faculty (Content Hub):\n${facultyContext || 'none'}`,
         `Attendance:\n${attendeesContext(attendees)}`,
         `Survey questions (id: prompt [options]):\n${questionContext || 'none'}`,
+        `Survey results (computed; quote these numbers exactly):\n${surveyResultsContext(surveyCharts) || 'none'}`,
         `Post-event feedback survey responses (n=${surveyAnswers.length}):\n${surveyContext || 'none'}`,
         `Platform metrics:\n${platformContext || 'none'}`,
         `HubSpot:\n${hubspotContext || 'none'}`,
@@ -236,9 +251,13 @@ export class ReportGenerationOrchestrator {
       title: `Executive Summary: ${narrative.programTitle ?? packet.campaignName ?? `Campaign ${packet.campaignId}`}`,
       campaignName: packet.campaignName ?? `Campaign ${packet.campaignId}`,
       variant,
+      hasQa,
+      generatedAt: new Date().toISOString(),
       sessions: packet.sessions.map((s) => ({ title: s.title, kind: s.kind, date: s.sessionDate })),
       narrative,
-      surveyCharts: buildSurveyCharts(surveyAnswers, surveyQuestions),
+      surveyCharts,
+      surveyResponseCount: surveyAnswers.length,
+      surveyFreeText: buildSurveyFreeText(surveyAnswers, surveyQuestions),
       kols: faculty.length ? faculty : narrative.kols,
       kolSource: faculty.length ? 'hub' : 'transcript',
       attendees,
