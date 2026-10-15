@@ -31,7 +31,6 @@ resource "aws_cognito_user_pool_client" "this" {
 
   lifecycle {
     prevent_destroy = true
-    ignore_changes  = [client_secret]
   }
 }
 
