@@ -30,7 +30,7 @@ alarm_notification_emails = []
 s3_force_destroy          = true
 
 # ECS orchestration service. Image overridden per deploy by workflow.
-reports_service_image_uri            = "233636046512.dkr.ecr.us-east-1.amazonaws.com/cht-reports-dev-service:1.0.0"
+reports_service_image_uri            = "233636046512.dkr.ecr.us-east-1.amazonaws.com/cht-reports-dev-service:1.2.1"
 platform_cluster_name                = "cht-dev-cluster"
 platform_vpc_name                    = "cht-dev-vpc"
 platform_backend_security_group_name = "cht-dev-backend-sg"
