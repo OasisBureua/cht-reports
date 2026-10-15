@@ -3,7 +3,7 @@
 cht-reports calls companion over Service Connect. Chatbot traffic stays on `/chat`.
 
 - Endpoint: existing `POST /generate` (prompt in, completion out). Not `/chat` (no RAG).
-- Auth: `X-BFF-Auth` as today.
+- Auth: Cognito M2M Bearer `companion/generate.invoke` (same `cht-reports-m2m-*` client as Hub / Platform notify). `X-Request-Id` is the report id.
 - Model: Claude Sonnet on Bedrock (same family as the chatbot). Do not add GPT-5
   for v1 reports. Optional: `model_id` override later; default Sonnet
   (`us.anthropic.claude-sonnet-5`).

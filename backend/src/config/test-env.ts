@@ -25,5 +25,5 @@ export const testEnv: AppEnv = {
   maxEditAttempts: 3,
   bedrockModelId: 'us.anthropic.claude-sonnet-5',
   companionServiceConnectUrl: 'http://cht-companion:8080',
-  companionInternalSecret: 'test-secret',
+  companionGenerateScope: 'companion/generate.invoke',
 };

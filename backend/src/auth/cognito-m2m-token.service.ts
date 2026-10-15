@@ -18,8 +18,8 @@ export class CognitoM2mTokenError extends Error {}
  *
  * One client, one token per scope: hub/reports.read for the report packet
  * (the default), platform/reports.notify for telling Platform a report is
- * ready. Credentials come from the cht-{env}-cognito-m2m-reports secret
- * (Hub TF), injected by ECS as CONTENTHUB_M2M_* env vars.
+ * ready, companion/generate.invoke for cht-companion /generate. Credentials
+ * come from cht-{env}-cognito-m2m-reports, injected as CONTENTHUB_M2M_*.
  *
  * Logging policy: success and failure outcomes are OK to log.
  * Never log access_token, client_secret, or Authorization headers.
@@ -34,14 +34,23 @@ export class CognitoM2mTokenService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     if (!this.isConfigured()) {
-      this.logger.warn('[M2M] Reports->Hub token warm skipped (CONTENTHUB_M2M_* not configured)');
+      this.logger.warn('[M2M] token warm skipped (CONTENTHUB_M2M_* not configured)');
       return;
     }
+    const scopes = [
+      this.env.contentHubM2m.scope,
+      this.env.platformNotifyScope,
+      this.env.companionGenerateScope,
+    ];
+    await Promise.all(scopes.map((scope) => this.warm(scope)));
+  }
+
+  private async warm(scope: string): Promise<void> {
     try {
-      await this.getAccessToken();
+      await this.getAccessToken(scope);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(`[M2M] Reports->Hub token warm failed: ${message} (Hub calls will retry on demand)`);
+      this.logger.error(`[M2M] token warm failed scope=${scope}: ${message} (calls will retry on demand)`);
     }
   }
 

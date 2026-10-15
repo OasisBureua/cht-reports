@@ -109,6 +109,7 @@
         "acm:List*",
         "application-autoscaling:*",
         "cloudwatch:*",
+        "cognito-idp:*",
         "ec2:*",
         "ecs:*",
         "elasticloadbalancing:*",

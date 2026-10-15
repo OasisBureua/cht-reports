@@ -75,6 +75,8 @@ aws s3api put-bucket-versioning \
   --versioning-configuration Status=Enabled
 ```
 
+After changing `infrastructure/iam/github-actions-deploy-policy-*.json`, re-run the matching script so the live IAM policy picks up new actions (`cognito-idp` for the reports M2M client).
+
 ### 7. Confirm
 
 - Actions → **Deploy to Development** → Run workflow (`plan_only` is fine).

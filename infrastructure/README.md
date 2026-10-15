@@ -25,6 +25,7 @@ cht-platform-tool POST /api/internal/reports/{id}/ready ──► SES email (CPR
 ### Security
 - **KMS**: keys for S3, Secrets Manager, SQS, CloudWatch, SNS
 - **Secrets Manager**: integration credentials
+- **Reports M2M**: Cognito app client `cht-reports-m2m-{env}` + SM `cht-{env}-cognito-m2m-reports` (imported; Hub owns the `hub` RS)
 
 ### Compute
 - **ECR**: one repository per Lambda

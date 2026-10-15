@@ -63,3 +63,18 @@ output "report_jobs_report_index" {
   description = "GSI for looking a report up by report_id alone"
   value       = module.dynamodb.report_index_name
 }
+
+output "reports_m2m_client_id" {
+  description = "cht-reports-m2m-{env} Cognito client id (null when cognito_user_pool_id is empty)"
+  value       = try(module.reports_m2m[0].client_id, null)
+}
+
+output "reports_m2m_secret_name" {
+  description = "SM name cht-{env}-cognito-m2m-reports"
+  value       = try(module.reports_m2m[0].secret_name, null)
+}
+
+output "reports_m2m_secret_arn" {
+  description = "SM ARN for reports M2M (hub/reports.read, platform/reports.notify, companion/generate.invoke)"
+  value       = try(module.reports_m2m[0].secret_arn, null)
+}
