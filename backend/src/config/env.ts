@@ -47,7 +47,8 @@ export interface AppEnv {
   maxEditAttempts: number;
   bedrockModelId: string;
   companionServiceConnectUrl: string;
-  companionInternalSecret: string;
+  /** Same reports M2M client; companion /generate is tokens-only. */
+  companionGenerateScope: string;
 }
 
 export function loadEnv(): AppEnv {
@@ -76,6 +77,6 @@ export function loadEnv(): AppEnv {
     maxEditAttempts: Number(process.env.MAX_EDIT_ATTEMPTS ?? 3),
     bedrockModelId: process.env.BEDROCK_MODEL_ID ?? 'us.anthropic.claude-sonnet-5',
     companionServiceConnectUrl: process.env.COMPANION_SERVICE_CONNECT_URL ?? 'http://cht-companion:8080',
-    companionInternalSecret: required('COMPANION_INTERNAL_SECRET'),
+    companionGenerateScope: process.env.COMPANION_GENERATE_SCOPE?.trim() || 'companion/generate.invoke',
   };
 }

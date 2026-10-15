@@ -54,7 +54,7 @@ Set in Terraform (`ecs_backend` environment_variables / secret_arns):
 | `CONTENTHUB_API_KEY` | S2S key for `GET .../report-packet` |
 | `REPORT_REQUESTS_QUEUE_URL` | Generate SQS queue |
 | `GENERATION_STATE_TABLE` | DynamoDB job table |
-| `COMPANION_INTERNAL_SECRET` | `X-BFF-Auth` for cht-companion `/generate` |
+| `CONTENTHUB_M2M_*` | Cognito client_credentials for Hub, Platform notify, and companion `/generate` (this repo owns `cht-reports-m2m-*`) |
 
 ## Environment variables (Lambda)
 

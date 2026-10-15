@@ -30,14 +30,17 @@ alarm_notification_emails = []
 s3_force_destroy          = true
 
 # ECS orchestration service. Image overridden per deploy by workflow.
-reports_service_image_uri            = "233636046512.dkr.ecr.us-east-1.amazonaws.com/cht-reports-dev-service:1.0.0"
+reports_service_image_uri            = "233636046512.dkr.ecr.us-east-1.amazonaws.com/cht-reports-dev-service:1.2.1"
 platform_cluster_name                = "cht-dev-cluster"
 platform_vpc_name                    = "cht-dev-vpc"
 platform_backend_security_group_name = "cht-dev-backend-sg"
 service_connect_namespace_name       = "cht-dev.local"
-companion_bff_auth_secret_name       = "cht-dev-companion-bff-auth"
-contenthub_m2m_secret_name           = "cht-dev-cognito-m2m-reports"
-companion_kms_alias                  = "alias/cht-dev-companion"
+
+# Reports M2M caller (imported from Hub). Hub still owns the `hub` RS.
+cognito_user_pool_id         = "us-east-1_J51gzfO0I"
+cognito_auth_domain          = "chm-dev.auth.us-east-1.amazoncognito.com"
+contenthub_m2m_secret_name   = "cht-dev-cognito-m2m-reports"
+reports_m2m_import_client_id = "3shbd05vgmmno67a1p8lua2kld"
 
 # cht-platform-tool backend task role: enqueues report requests and writes
 # report job items (CPR-34 / CPR-30).

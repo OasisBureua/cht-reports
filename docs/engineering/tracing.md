@@ -44,7 +44,8 @@ cht-reports ECS worker
   │  POST companion /generate
   │     X-Request-Id: R
   │     X-Client: cht-reports
-  │     log companion response request_id as companionRequestId
+  │     Authorization: Bearer (M2M companion/generate.invoke)
+  │     companion echoes R as request_id in JSON + logs
   ▼
 S3  reports/{campaignId}/R/vN.pdf
   ▼
@@ -72,7 +73,7 @@ Do not mint a new UUID for Hub (current cht-reports behavior). That splits Hub l
 |-------|-------------|
 | Orchestrator logs `Request ${reportId} …` on skip / complete / fail | Same, plus **stage** lines (`pulling_data`, `generating`, `rendering`, `uploading`) already implied by DDB; mirror them in logs |
 | Hub `X-Request-Id` = **new `randomUUID()` per fetch** | Pass **`reportId`**. Thread it from `orchestrator.handle` → `ContentHubClient.fetchReportPacket` |
-| Companion: `X-Client` only; drops body `request_id` | Send `X-Request-Id: reportId`. Log `companionRequestId` from the JSON body |
+| Companion: Bearer `companion/generate.invoke` + `X-Request-Id: reportId` | Companion logs and returns that id as `request_id` |
 | SQS `MessageId` not logged | Log `sqsMessageId` once per receive (redelivery vs new enqueue) |
 | No request-scoped logger; poll / health lines have no id | Acceptable. Do not require Nest CLS for v1 |
 | Notify Lambda: X-Ray `Active`; generate ECS: none | Leave it. Do not add an X-Ray sidecar for v1 |
@@ -103,11 +104,9 @@ Hub does not need to persist `reportId`. Logging the header is enough.
 
 | Today | Before prod |
 |-------|-------------|
-| `POST /generate` returns `request_id` | Accept **`X-Request-Id`**; log it on `/generate` (and Bedrock call if you wrap it) |
-| `X-BFF-Auth` + `X-Client` | Unchanged |
-| Chat `/chat` | Out of scope. Do not couple chatbot tracing to reports |
-
-If companion already has a request-id middleware, bind `X-Request-Id` when present instead of minting a new one for `/generate`.
+| `POST /generate` accepts `X-Request-Id` and returns it as `request_id` | Done. Search `/ecs/cht-dev-companion` for the reportId |
+| Auth is Cognito M2M `companion/generate.invoke` (not `X-BFF-Auth`) | Same reports M2M client |
+| Chat `/chat` | Out of scope |
 
 ## What is **not** required for v1 prod
 
@@ -123,7 +122,7 @@ Revisit X-Ray when the **platform** (Platform + Hub + companion) standardizes it
 **Must (correlation works in CloudWatch)**
 
 - [ ] **cht-reports:** Hub `X-Request-Id` = `reportId` (not `randomUUID()`)
-- [ ] **cht-reports:** companion `X-Request-Id` = `reportId`; log companion `request_id`
+- [x] **cht-reports:** companion `X-Request-Id` = `reportId`; log companion `request_id`
 - [ ] **cht-reports:** log SQS `MessageId` on receive
 - [ ] **cht-content-hub:** packet handler logs `X-Request-Id` + `campaignId` on success and error
 - [ ] **cht-companion:** `/generate` logs inbound `X-Request-Id`

@@ -228,7 +228,7 @@ export class ReportGenerationOrchestrator {
 
     // Output budget comes from REPORT_MAX_OUTPUT_TOKENS (CompanionClient
     // default). No temperature: Claude Sonnet 5 on Bedrock rejects it.
-    const result = await this.companion.generate({ systemPrompt, userContent });
+    const result = await this.companion.generate({ systemPrompt, userContent, requestId });
     await this.storage.saveModelReply(String(packet.campaignId), requestId, version, result.text);
     this.logger.log(
       `Generation for campaign ${packet.campaignId}: ${result.finishReason}, tokens in=${result.tokensInput ?? '?'} out=${result.tokensOutput ?? '?'}, ${estimateCostUsd(result)}`,

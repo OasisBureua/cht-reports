@@ -34,12 +34,12 @@ resource "aws_iam_role_policy_attachment" "ecs_execution_managed" {
 data "aws_iam_policy_document" "ecs_execution_secrets" {
   statement {
     actions   = ["secretsmanager:GetSecretValue"]
-    resources = concat(var.secret_arns, [var.companion_bff_auth_secret_arn])
+    resources = var.secret_arns
   }
 
   statement {
     actions   = ["kms:Decrypt"]
-    resources = [var.secrets_kms_key_arn, var.companion_kms_key_arn]
+    resources = [var.secrets_kms_key_arn]
   }
 }
 

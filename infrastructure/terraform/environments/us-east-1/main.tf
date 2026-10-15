@@ -218,41 +218,36 @@ module "cloudwatch" {
 # Joins the shared cht-platform-tool cluster/namespace, does not run its
 # own cluster or VPC. See modules/compute/ecs-cluster for why.
 
-# cht-companion's shared BFF-auth secret (COMPANION_INTERNAL_SECRET). Not a
-# managed resource here. It is created and rotated in cht-companion's own
-# Terraform (modules/security/bff-auth); reports just needs read access to
-# send the matching X-BFF-Auth header on calls to /generate. Same
-# cross-repo-secret pattern as CPR-12's Cognito M2M design: reference via
-# data source, IAM grant here, lifecycle owned by the other repo.
-data "aws_secretsmanager_secret" "companion_bff_auth" {
-  name = var.companion_bff_auth_secret_name
+# cht-reports M2M caller. Hub still owns the `hub` RS (hub/reports.read).
+# Import the live client + secret; do not create a second one. Apply Hub
+# `removed { destroy = false }` before the first reports apply that owns them.
+locals {
+  reports_m2m_secret_name = var.contenthub_m2m_secret_name != "" ? var.contenthub_m2m_secret_name : "cht-${local.env_short}-cognito-m2m-reports"
+  reports_m2m_token_url   = var.cognito_auth_domain != "" ? "https://${trimsuffix(var.cognito_auth_domain, "/")}/oauth2/token" : ""
 }
 
-# cht-reports -> Content Hub M2M credentials (hub/reports.read). Created and
-# owned by cht-content-hub TF (cht-{env}-cognito-m2m-reports, JSON
-# client_id/client_secret/token_url/scope). Same cross-repo-secret pattern as
-# companion_bff_auth: data source here, lifecycle in the owning repo.
-data "aws_secretsmanager_secret" "contenthub_m2m" {
-  count = var.contenthub_m2m_secret_name != "" ? 1 : 0
-  name  = var.contenthub_m2m_secret_name
+module "reports_m2m" {
+  count  = var.cognito_user_pool_id != "" ? 1 : 0
+  source = "../../modules/identity/reports-m2m"
+
+  environment  = var.environment
+  user_pool_id = var.cognito_user_pool_id
+  token_url    = local.reports_m2m_token_url
+  secret_name  = local.reports_m2m_secret_name
+
+  hub_reports_scope        = "hub/reports.read"
+  platform_notify_scope    = var.platform_reports_notify_scope
+  companion_generate_scope = var.companion_generate_scope
 }
 
 locals {
-  contenthub_m2m_secret_arn = try(data.aws_secretsmanager_secret.contenthub_m2m[0].arn, "")
+  contenthub_m2m_secret_arn = try(module.reports_m2m[0].secret_arn, "")
   contenthub_m2m_task_secrets = local.contenthub_m2m_secret_arn == "" ? {} : {
     CONTENTHUB_M2M_CLIENT_ID     = "${local.contenthub_m2m_secret_arn}:client_id::"
     CONTENTHUB_M2M_CLIENT_SECRET = "${local.contenthub_m2m_secret_arn}:client_secret::"
     CONTENTHUB_M2M_TOKEN_URL     = "${local.contenthub_m2m_secret_arn}:token_url::"
     CONTENTHUB_M2M_SCOPE         = "${local.contenthub_m2m_secret_arn}:scope::"
   }
-}
-
-# cht-companion uses one shared KMS key for everything (not a per-service
-# split like this repo's own kms module), with a root-account-wide grant.
-# Same-account IAM policy on cht-reports' execution role is what actually
-# gates access, no change needed on cht-companion's side.
-data "aws_kms_alias" "companion" {
-  name = var.companion_kms_alias
 }
 
 module "ecs_cluster" {
@@ -339,9 +334,6 @@ module "iam" {
 
   dynamodb_table_arn   = module.dynamodb.table_arn
   dynamodb_kms_key_arn = module.kms.dynamodb_kms_key_arn
-
-  companion_bff_auth_secret_arn = data.aws_secretsmanager_secret.companion_bff_auth.arn
-  companion_kms_key_arn         = data.aws_kms_alias.companion.target_key_arn
 }
 
 module "ecs_backend" {
@@ -380,9 +372,6 @@ module "ecs_backend" {
       # No longer read by the worker (Hub requires Bearer since
       # cht-content-hub #153). Removed in the long-lived secret cleanup.
       CONTENTHUB_API_KEY = "${module.secrets.secret_arn}:CONTENTHUB_API_KEY::"
-      # Plain-string secret (not JSON), no :KEY:: suffix. Matches how
-      # cht-companion's own ecs-companion module consumes this same secret.
-      COMPANION_INTERNAL_SECRET = data.aws_secretsmanager_secret.companion_bff_auth.arn
     },
     local.contenthub_m2m_task_secrets,
   )

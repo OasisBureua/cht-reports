@@ -128,24 +128,36 @@ variable "report_request_visibility_timeout_seconds" {
   default     = 900
 }
 
-# ============================================
-# cht-companion cross-repo references (for calling POST /generate)
-# ============================================
-
-variable "contenthub_m2m_secret_name" {
-  description = "Content Hub-owned M2M secret for reports -> Hub (cht-dev-cognito-m2m-reports). Empty skips the lookup (e.g. before Hub creates it)."
+# Reports M2M client (cht-reports-m2m-{env}) + SM cht-{env}-cognito-m2m-reports.
+# Hub owns the `hub` RS; this stack owns the caller. Empty pool id skips create.
+variable "cognito_user_pool_id" {
+  description = "Shared CHT Cognito pool (cht-dev-users / cht-platform-users). Empty skips the M2M client."
   type        = string
   default     = ""
 }
 
-variable "companion_bff_auth_secret_name" {
-  description = "cht-companion's BFF-auth Secrets Manager secret name (cht-dev-companion-bff-auth / cht-companion-bff-auth)."
+variable "cognito_auth_domain" {
+  description = "Cognito auth domain host for the token URL, e.g. chm-dev.auth.us-east-1.amazoncognito.com"
   type        = string
+  default     = ""
 }
 
-variable "companion_kms_alias" {
-  description = "cht-companion's shared KMS key alias (alias/cht-dev-companion / alias/cht-companion)."
+variable "contenthub_m2m_secret_name" {
+  description = "SM name for the reports M2M JSON. Empty uses cht-{env}-cognito-m2m-reports."
   type        = string
+  default     = ""
+}
+
+variable "reports_m2m_import_client_id" {
+  description = "Existing cht-reports-m2m-{env} client id to import. Empty creates a new client (do not use on live envs)."
+  type        = string
+  default     = ""
+}
+
+variable "companion_generate_scope" {
+  description = "OAuth scope the reports M2M client requests for companion /generate"
+  type        = string
+  default     = "companion/generate.invoke"
 }
 
 variable "platform_tool_role_arns" {

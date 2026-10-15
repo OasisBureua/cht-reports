@@ -42,12 +42,3 @@ variable "dynamodb_kms_key_arn" {
   type = string
 }
 
-variable "companion_bff_auth_secret_arn" {
-  description = "cht-companion's BFF-auth secret ARN (COMPANION_INTERNAL_SECRET), for calling /generate."
-  type        = string
-}
-
-variable "companion_kms_key_arn" {
-  description = "cht-companion's shared KMS key ARN, needed to decrypt companion_bff_auth_secret_arn."
-  type        = string
-}

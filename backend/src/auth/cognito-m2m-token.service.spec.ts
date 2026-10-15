@@ -128,7 +128,28 @@ describe('CognitoM2mTokenService', () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it('warms on boot and never throws from onModuleInit', async () => {
+  it('warms hub, notify, and companion scopes on boot and never throws from onModuleInit', async () => {
+    const mockFetch = jest
+      .fn()
+      .mockResolvedValueOnce(tokenResponse('hub-1'))
+      .mockResolvedValueOnce(tokenResponse('notify-1'))
+      .mockResolvedValueOnce(tokenResponse('companion-1'));
+    global.fetch = mockFetch as unknown as typeof fetch;
+    const service = new CognitoM2mTokenService(testEnv);
+
+    await expect(service.onModuleInit()).resolves.toBeUndefined();
+    const scopes = mockFetch.mock.calls.map(([, init]) => String(init.body));
+    expect(scopes).toEqual(
+      expect.arrayContaining([
+        'grant_type=client_credentials&scope=hub%2Freports.read',
+        'grant_type=client_credentials&scope=platform%2Freports.notify',
+        'grant_type=client_credentials&scope=companion%2Fgenerate.invoke',
+      ]),
+    );
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not throw from onModuleInit when mint fails', async () => {
     global.fetch = jest.fn().mockRejectedValue(new Error('down')) as unknown as typeof fetch;
 
     await expect(new CognitoM2mTokenService(testEnv).onModuleInit()).resolves.toBeUndefined();
