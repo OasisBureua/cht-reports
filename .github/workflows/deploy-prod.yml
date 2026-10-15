@@ -20,7 +20,7 @@ concurrency:
 env:
   AWS_REGION: us-east-1
   ECR_REGISTRY: 233636046512.dkr.ecr.us-east-1.amazonaws.com
-  ECR_BACKEND_REPO: cht-reports-prod-backend
+  ECR_BACKEND_REPO: cht-reports-prod-service
   ECR_GENERATOR_REPO: cht-reports-prod-generator
   TERRAFORM_VERSION: 1.10.5
   TF_ENV_DIR: infrastructure/terraform/environments/us-east-1
@@ -229,6 +229,19 @@ jobs:
         if: needs.changes.outputs.deploy_backend == 'true' || needs.changes.outputs.deploy_lambda == 'true'
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Ensure ECR repositories exist
+        if: needs.changes.outputs.deploy_backend == 'true' || needs.changes.outputs.deploy_lambda == 'true'
+        run: |
+          for repo in "${{ env.ECR_BACKEND_REPO }}" "${{ env.ECR_GENERATOR_REPO }}"; do
+            if ! aws ecr describe-repositories --repository-names "$repo" --region "$AWS_REGION" >/dev/null 2>&1; then
+              echo "Creating ECR repository: $repo"
+              aws ecr create-repository --repository-name "$repo" --region "$AWS_REGION" \
+                --image-scanning-configuration scanOnPush=true \
+                --encryption-configuration encryptionType=AES256 \
+                --tags Key=Project,Value=cht-reports Key=Environment,Value=production
+            fi
+          done
+
       - name: Generate image tag
         if: needs.changes.outputs.deploy_backend == 'true' || needs.changes.outputs.deploy_lambda == 'true'
         id: meta
@@ -270,36 +283,43 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Setup Terraform
-        if: needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true'
+        if: needs.changes.outputs.deploy_backend == 'true' || needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true'
         uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
           terraform_wrapper: false
 
       - name: Verify GitHub Environment secrets
-        if: needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true'
+        if: needs.changes.outputs.deploy_backend == 'true' || needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true'
         run: ./scripts/verify-github-env-secrets.sh production
 
       - name: Terraform Init
-        if: needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true'
+        if: needs.changes.outputs.deploy_backend == 'true' || needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true'
         working-directory: ${{ env.TF_ENV_DIR }}
         run: terraform init -reconfigure -backend-config="${{ env.TF_BACKEND_CONFIG }}"
 
       - name: Terraform Plan
-        if: needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true'
+        if: needs.changes.outputs.deploy_backend == 'true' || needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true'
         working-directory: ${{ env.TF_ENV_DIR }}
         run: |
           EXTRA_VARS=()
-          if [ "${{ needs.changes.outputs.deploy_lambda }}" = "true" ]; then
-            EXTRA_VARS+=(
-              -var="lambda_images={\"generator\":\"${{ env.ECR_REGISTRY }}/${{ env.ECR_GENERATOR_REPO }}:${{ steps.meta.outputs.image_tag }}\"}"
-            )
-          else
-            chmod +x "${{ github.workspace }}/scripts/ci-resolve-lambda-images-from-state.sh"
+          chmod +x "${{ github.workspace }}/scripts/ci-resolve-lambda-images-from-state.sh"
+          if terraform state list 2>/dev/null | grep -q .; then
             eval "$("${{ github.workspace }}/scripts/ci-resolve-lambda-images-from-state.sh")"
-            EXTRA_VARS+=(
-              -var="lambda_images={\"generator\":\"${GENERATOR_IMAGE}\"}"
-            )
+          else
+            echo "Empty Terraform state: using tfvars image pins unless this run builds them."
+          fi
+          if [ "${{ needs.changes.outputs.deploy_backend }}" = "true" ]; then
+            REPORTS_SERVICE_IMAGE="${{ env.ECR_REGISTRY }}/${{ env.ECR_BACKEND_REPO }}:${{ steps.meta.outputs.image_tag }}"
+          fi
+          if [ "${{ needs.changes.outputs.deploy_lambda }}" = "true" ]; then
+            GENERATOR_IMAGE="${{ env.ECR_REGISTRY }}/${{ env.ECR_GENERATOR_REPO }}:${{ steps.meta.outputs.image_tag }}"
+          fi
+          if [ -n "${REPORTS_SERVICE_IMAGE:-}" ]; then
+            EXTRA_VARS+=(-var="reports_service_image_uri=${REPORTS_SERVICE_IMAGE}")
+          fi
+          if [ -n "${GENERATOR_IMAGE:-}" ]; then
+            EXTRA_VARS+=(-var="lambda_images={\"generator\":\"${GENERATOR_IMAGE}\"}")
           fi
           terraform plan \
             -var-file="${{ env.TF_VAR_FILE }}" \
@@ -309,7 +329,7 @@ jobs:
           TF_VAR_contenthub_api_key: ${{ secrets.CONTENTHUB_API_KEY }}
 
       - name: Plan summary
-        if: needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true'
+        if: needs.changes.outputs.deploy_backend == 'true' || needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true'
         working-directory: ${{ env.TF_ENV_DIR }}
         run: |
           echo "## Terraform plan summary" >> "$GITHUB_STEP_SUMMARY"
@@ -323,7 +343,7 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Approve Terraform apply
-        if: (needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true') && github.event.inputs.plan_only != 'true'
+        if: (needs.changes.outputs.deploy_backend == 'true' || needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true') && github.event.inputs.plan_only != 'true'
         uses: trstringer/manual-approval@v1
         timeout-minutes: 120
         with:
@@ -337,14 +357,14 @@ jobs:
             Comment **approve** to apply. Comment **deny** to cancel.
 
       - name: Re-assume AWS role after approval
-        if: (needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true') && github.event.inputs.plan_only != 'true'
+        if: (needs.changes.outputs.deploy_backend == 'true' || needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true') && github.event.inputs.plan_only != 'true'
         uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Apply
-        if: (needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true') && github.event.inputs.plan_only != 'true'
+        if: (needs.changes.outputs.deploy_backend == 'true' || needs.changes.outputs.deploy_lambda == 'true' || needs.changes.outputs.deploy_infra == 'true') && github.event.inputs.plan_only != 'true'
         working-directory: ${{ env.TF_ENV_DIR }}
         run: terraform apply tfplan
 
