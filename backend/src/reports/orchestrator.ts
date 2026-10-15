@@ -96,7 +96,7 @@ export class ReportGenerationOrchestrator {
       }
       existing = await this.state.initialize(requestId, request.campaignId);
     }
-    if (existing.status === 'complete') {
+    if (existing.status === 'COMPLETE') {
       this.logger.log(`Request ${requestId} already complete, skipping (idempotent redelivery)`);
       return;
     }
@@ -105,7 +105,7 @@ export class ReportGenerationOrchestrator {
     const version = reportVersion(existing.editAttempts);
 
     try {
-      await this.state.beginAttempt(requestId, 'pulling_data');
+      await this.state.beginAttempt(requestId, 'PULLING_DATA');
       const packet = await this.contentHub.fetchReportPacket({
         campaignId,
         windowStart: existing.windowStart,
@@ -139,14 +139,14 @@ export class ReportGenerationOrchestrator {
 
       const { template, note: templateNote } = await this.templates.load(packet.template);
 
-      await this.state.markStatus(requestId, 'generating');
+      await this.state.markStatus(requestId, 'GENERATING');
       if (templateNote) this.logger.warn(`Request ${requestId}: ${templateNote}`);
       const content = await this.generateContent(packet, template.systemPrompt, requestId, version);
 
-      await this.state.markStatus(requestId, 'rendering');
+      await this.state.markStatus(requestId, 'RENDERING');
       const html = await this.reportDoc.renderExecutiveSummary(content, { htmlTemplate: template.html });
 
-      await this.state.markStatus(requestId, 'uploading');
+      await this.state.markStatus(requestId, 'UPLOADING');
       const s3Key = await this.storage.uploadReport(String(campaignId), requestId, version, html, content);
       await this.state.markComplete(requestId, s3Key, version);
 

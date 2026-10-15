@@ -18,7 +18,7 @@ function stateRow(overrides: Partial<GenerationState> = {}): GenerationState {
     sources: [],
     windowStart: null,
     windowEnd: null,
-    status: 'queued',
+    status: 'QUEUED',
     attemptCount: 0,
     lastError: null,
     s3KeyPdf: null,
@@ -130,7 +130,7 @@ describe('ReportGenerationOrchestrator', () => {
   });
 
   it('does not notify again for an already-complete redelivery', async () => {
-    const { orchestrator, notifier, storage } = setup(stateRow({ status: 'complete', version: 1 }));
+    const { orchestrator, notifier, storage } = setup(stateRow({ status: 'COMPLETE', version: 1 }));
 
     await orchestrator.handle({ requestId: 'rep-1', campaignId: '9' });
 
@@ -196,7 +196,7 @@ describe('report content from the packet (CPR-46)', () => {
 
   function build() {
     const companion = {
-      generate: jest.fn().mockResolvedValue({ text: narrative, finishReason: 'complete', tokensInput: 1, tokensOutput: 1 }),
+      generate: jest.fn().mockResolvedValue({ text: narrative, finishReason: 'COMPLETE', tokensInput: 1, tokensOutput: 1 }),
     };
     const orchestrator = new ReportGenerationOrchestrator(
       {} as unknown as ContentHubClient,

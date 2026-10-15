@@ -14,15 +14,21 @@ import type { AppEnv } from '../../config/env';
 import { APP_ENV } from '../../config/config.module';
 import { AwsClients } from '../../aws/aws-clients';
 
+/** Stored uppercase. Rows written before that are lowercase; reads normalize them. */
 export type GenerationStatus =
-  | 'queued'
-  | 'pulling_data'
-  | 'generating'
-  | 'rendering'
-  | 'uploading'
-  | 'waiting_for_transcript'
-  | 'complete'
-  | 'failed';
+  | 'QUEUED'
+  | 'PULLING_DATA'
+  | 'GENERATING'
+  | 'RENDERING'
+  | 'UPLOADING'
+  | 'WAITING_FOR_TRANSCRIPT'
+  | 'COMPLETE'
+  | 'FAILED';
+
+/** A stored status in either case, as the uppercase enum. */
+export function normalizeStatus(value: unknown): GenerationStatus {
+  return String(value ?? '').toUpperCase() as GenerationStatus;
+}
 
 export const REPORT_ID_INDEX = 'report_id-index';
 
@@ -92,7 +98,7 @@ export class GenerationStateService {
       sources: [],
       windowStart: null,
       windowEnd: null,
-      status: 'queued',
+      status: 'QUEUED',
       attemptCount: 0,
       lastError: null,
       s3KeyPdf: null,
@@ -136,7 +142,7 @@ export class GenerationStateService {
   }
 
   async markFailed(requestId: string, error: string): Promise<GenerationState> {
-    return this.update(await this.require(requestId), { status: 'failed', lastError: error });
+    return this.update(await this.require(requestId), { status: 'FAILED', lastError: error });
   }
 
   /**
@@ -155,7 +161,7 @@ export class GenerationStateService {
           'SET #status = :waiting, waiting_since = if_not_exists(waiting_since, :now), attempt_count = :attempts, last_error = :null, #updated_at = :now',
         ExpressionAttributeNames: { '#status': 'status', '#updated_at': 'updated_at' },
         ExpressionAttributeValues: {
-          ':waiting': 'waiting_for_transcript',
+          ':waiting': 'WAITING_FOR_TRANSCRIPT',
           ':now': now,
           ':attempts': Math.max(0, current.attemptCount - 1),
           ':null': null,
@@ -168,7 +174,7 @@ export class GenerationStateService {
 
   async markComplete(requestId: string, s3KeyPdf: string, version: number): Promise<GenerationState> {
     return this.update(await this.require(requestId), {
-      status: 'complete',
+      status: 'COMPLETE',
       lastError: null,
       s3KeyPdf,
       version,
@@ -253,7 +259,7 @@ export class GenerationStateService {
       sources: (item.sources as string[]) ?? [],
       windowStart: (item.window_start as string) ?? null,
       windowEnd: (item.window_end as string) ?? null,
-      status: item.status as GenerationStatus,
+      status: normalizeStatus(item.status),
       attemptCount: item.attempt_count as number,
       lastError: (item.last_error as string) ?? null,
       s3KeyPdf: (item.s3_key_pdf as string) ?? null,
