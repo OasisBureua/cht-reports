@@ -49,7 +49,9 @@
         "ecr:UntagResource",
         "ecr:PutLifecyclePolicy",
         "ecr:GetLifecyclePolicy",
-        "ecr:DeleteLifecyclePolicy"
+        "ecr:DeleteLifecyclePolicy",
+        "ecr:GetRepositoryPolicy",
+        "ecr:SetRepositoryPolicy"
       ],
       "Resource": "arn:aws:ecr:us-east-1:233636046512:repository/cht-reports-prod-*"
     },
@@ -139,6 +141,31 @@
         "arn:aws:logs:us-east-1:233636046512:log-group:/aws/lambda/cht-reports-prod*",
         "arn:aws:logs:us-east-1:233636046512:log-group:/ecs/cht-reports-prod*"
       ]
+    },
+    {
+      "Sid": "DeployDynamoDBProd",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:*"
+      ],
+      "Resource": [
+        "arn:aws:dynamodb:us-east-1:233636046512:table/cht-prod-report-state",
+        "arn:aws:dynamodb:us-east-1:233636046512:table/cht-prod-report-state/*",
+        "arn:aws:dynamodb:us-east-2:233636046512:table/cht-prod-report-state",
+        "arn:aws:dynamodb:us-east-2:233636046512:table/cht-prod-report-state/*"
+      ]
+    },
+    {
+      "Sid": "ServiceConnectNamespaceRead",
+      "Effect": "Allow",
+      "Action": [
+        "servicediscovery:GetNamespace",
+        "servicediscovery:ListNamespaces",
+        "servicediscovery:GetService",
+        "servicediscovery:ListServices",
+        "servicediscovery:ListTagsForResource"
+      ],
+      "Resource": "*"
     }
   ]
 }
