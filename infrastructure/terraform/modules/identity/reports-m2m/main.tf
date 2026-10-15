@@ -31,9 +31,9 @@ resource "aws_cognito_user_pool_client" "this" {
 
   lifecycle {
     prevent_destroy = true
-    # Import leaves generate_secret unset in state. Setting it true is ForceNew
-    # and would mint a new client id/secret. Ignore it; the live client already
-    # has a secret. New envs still get generate_secret on first create.
+    # Import leaves generate_secret unset; the provider then reads it as true
+    # (hashicorp/aws#20298). Ignore it so we never ForceNew-replace the live
+    # client. After the first apply, state has generate_secret = true.
     ignore_changes = [generate_secret]
   }
 }
