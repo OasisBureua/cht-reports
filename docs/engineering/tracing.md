@@ -29,7 +29,7 @@ browser
   │  Platform JWT (+ optional X-Request-Id = httpRequestId)
   ▼
 cht-platform-tool  POST /api/reports  (or regenerate)
-  │  PutItem report_id=R, status=queued
+  │  PutItem report_id=R, status=QUEUED
   │  SendMessage { reportId: R, campaignId }
   │  log: httpRequestId, reportId=R, campaignId
   ▼
@@ -71,7 +71,7 @@ Do not mint a new UUID for Hub (current cht-reports behavior). That splits Hub l
 
 | Today | Before prod |
 |-------|-------------|
-| Orchestrator logs `Request ${reportId} …` on skip / complete / fail | Same, plus **stage** lines (`pulling_data`, `generating`, `rendering`, `uploading`) already implied by DDB; mirror them in logs |
+| Orchestrator logs `Request ${reportId} …` on skip / complete / fail | Same, plus **stage** lines (`PULLING_DATA`, `GENERATING`, `RENDERING`, `UPLOADING`) already implied by DDB; mirror them in logs |
 | Hub `X-Request-Id` = **new `randomUUID()` per fetch** | Pass **`reportId`**. Thread it from `orchestrator.handle` → `ContentHubClient.fetchReportPacket` |
 | Companion: Bearer `companion/generate.invoke` + `X-Request-Id: reportId` | Companion logs and returns that id as `request_id` |
 | SQS `MessageId` not logged | Log `sqsMessageId` once per receive (redelivery vs new enqueue) |

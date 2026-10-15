@@ -5,7 +5,7 @@ CHT Reports is an on-demand **SQS worker** on ECS Fargate (NestJS). The admin UI
 ```
   cht-platform-tool (JWT)
        │
-       │  PutItem DDB (queued) + SendMessage { reportId }
+       │  PutItem DDB (QUEUED) + SendMessage { reportId }
        ▼
   SQS  cht-{env}-report-requests  (+ _dlq)
        │
@@ -38,7 +38,7 @@ downloads.
 
 ### Waiting for the Zoom transcript (CPR-47)
 
-If a session from the last 24 hours (`TRANSCRIPT_WAIT_RECENT_HOURS`) has no transcript yet, the job goes to `waiting_for_transcript` and re-queues itself with a delay (`TRANSCRIPT_RECHECK_SECONDS`, default 300). Waiting does not use up an attempt. After `TRANSCRIPT_WAIT_MAX_MINUTES` (default 180) the job fails with the reason. Reports built from transcripts note that they are machine-generated.
+If a session from the last 24 hours (`TRANSCRIPT_WAIT_RECENT_HOURS`) has no transcript yet, the job goes to `WAITING_FOR_TRANSCRIPT` and re-queues itself with a delay (`TRANSCRIPT_RECHECK_SECONDS`, default 300). Waiting does not use up an attempt. After `TRANSCRIPT_WAIT_MAX_MINUTES` (default 180) the job fails with the reason. Reports built from transcripts note that they are machine-generated.
 
 ### Report-ready email (CPR-35)
 
