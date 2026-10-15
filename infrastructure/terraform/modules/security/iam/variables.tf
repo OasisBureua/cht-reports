@@ -1,0 +1,44 @@
+variable "resource_prefix" {
+  type = string
+}
+
+variable "environment" {
+  type = string
+}
+
+variable "secret_arns" {
+  description = "Secrets Manager ARNs (with wildcard suffix) the execution role may read."
+  type        = list(string)
+}
+
+variable "secrets_kms_key_arn" {
+  type = string
+}
+
+variable "s3_bucket_arn" {
+  description = "Reports bucket ARN, from modules.s3_reports.bucket_arn."
+  type        = string
+}
+
+variable "s3_kms_key_arn" {
+  description = "Reports bucket KMS key (SSE-KMS default), from module.kms.s3_kms_key_arn."
+  type        = string
+}
+
+variable "report_requests_queue_arn" {
+  type = string
+}
+
+variable "sqs_kms_key_arn" {
+  description = "SQS encryption key (report-requests queue), from module.kms.sqs_kms_key_arn."
+  type        = string
+}
+
+variable "dynamodb_table_arn" {
+  type = string
+}
+
+variable "dynamodb_kms_key_arn" {
+  type = string
+}
+

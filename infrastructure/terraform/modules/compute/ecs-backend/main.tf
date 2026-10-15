@@ -1,0 +1,187 @@
+# cht-reports NestJS SQS worker. Joins the shared platform cluster/namespace
+# (see modules/compute/ecs-cluster): Service Connect, no ALB, no public
+# ingress. Orchestration: consume { reportId }, UpdateItem DDB, GET Content
+# Hub /api/campaigns/{id}/report-packet (CONTENTHUB_BASE_URL +
+# CONTENTHUB_API_KEY), companion /generate, render, S3, SNS.
+#
+# Reachability:
+#   - cht-companion: Service Connect DNS, same namespace.
+#   - Content Hub: HTTPS to a separate cluster/VPC (no Cloud Map). Packet
+#     API only — cht-reports has no Aurora role.
+
+locals {
+  service_dns_name = var.service_connect_dns_name
+}
+
+resource "aws_cloudwatch_log_group" "reports" {
+  name              = "/ecs/${var.resource_prefix}"
+  retention_in_days = var.log_retention_days
+
+  tags = {
+    Name        = "/ecs/${var.resource_prefix}"
+    Environment = var.environment
+  }
+}
+
+resource "aws_ecs_task_definition" "reports" {
+  family                   = var.resource_prefix
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = var.task_cpu
+  memory                   = var.task_memory
+  execution_role_arn       = var.execution_role_arn
+  task_role_arn            = var.task_role_arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "reports"
+      image     = var.image_uri
+      essential = true
+
+      portMappings = [
+        {
+          name          = local.service_dns_name
+          containerPort = var.container_port
+          protocol      = "tcp"
+        }
+      ]
+
+      environment = [
+        for k, v in var.environment_variables : { name = k, value = v }
+      ]
+
+      secrets = [
+        for k, arn in var.secret_arns : { name = k, valueFrom = arn }
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = "/ecs/${var.resource_prefix}"
+          "awslogs-region"        = "us-east-1"
+          "awslogs-stream-prefix" = "reports"
+        }
+      }
+
+      healthCheck = {
+        command     = ["CMD-SHELL", "curl -f http://localhost:${var.container_port}/health || exit 1"]
+        interval    = 30
+        timeout     = 5
+        retries     = 3
+        startPeriod = 30
+      }
+    }
+  ])
+
+  tags = {
+    Name        = var.resource_prefix
+    Environment = var.environment
+  }
+}
+
+resource "aws_security_group" "reports" {
+  name_prefix = "${var.resource_prefix}-sg-"
+  description = "cht-reports task security group"
+  vpc_id      = var.vpc_id
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name        = "${var.resource_prefix}-sg"
+    Environment = var.environment
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# Allow inbound Service Connect traffic from the platform backend security
+# group only. No public ingress, no ALB, same posture as cht-companion.
+resource "aws_security_group_rule" "from_platform_backend" {
+  type                     = "ingress"
+  from_port                = var.container_port
+  to_port                  = var.container_port
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.reports.id
+  source_security_group_id = var.platform_backend_security_group_id
+}
+
+resource "aws_ecs_service" "reports" {
+  name            = var.resource_prefix
+  cluster         = var.cluster_id
+  task_definition = aws_ecs_task_definition.reports.arn
+  desired_count   = var.desired_count
+  launch_type     = "FARGATE"
+
+  # The platform backend SG is what cht-companion's SG admits on 8080, so
+  # the tasks carry it too; otherwise calls to /generate are refused.
+  network_configuration {
+    subnets          = var.private_subnet_ids
+    security_groups  = [aws_security_group.reports.id, var.platform_backend_security_group_id]
+    assign_public_ip = false
+  }
+
+  service_connect_configuration {
+    enabled   = true
+    namespace = var.service_connect_namespace_arn
+
+    service {
+      port_name      = local.service_dns_name
+      discovery_name = local.service_dns_name
+
+      client_alias {
+        port     = var.container_port
+        dns_name = local.service_dns_name
+      }
+    }
+  }
+
+  depends_on = [aws_cloudwatch_log_group.reports]
+
+  # One-task SQS worker: any minimumHealthyPercent > 0 rounds up to 1, so ECS
+  # keeps the current 512/2048 task and needs a *second* task to roll. That
+  # is "100% of memory holding the running task." 0% lets the scheduler stop
+  # the old task first (queue keeps the messages). 200% still allows start-
+  # new-then-stop-old when a second Fargate task can launch.
+  deployment_minimum_healthy_percent = 0
+  deployment_maximum_percent         = 200
+
+  deployment_circuit_breaker {
+    enable   = var.environment == "production"
+    rollback = var.environment == "production"
+  }
+
+  tags = {
+    Name        = var.resource_prefix
+    Environment = var.environment
+  }
+}
+
+resource "aws_appautoscaling_target" "reports" {
+  max_capacity       = var.max_capacity
+  min_capacity       = var.min_capacity
+  resource_id        = "service/${var.cluster_id}/${aws_ecs_service.reports.name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
+}
+
+resource "aws_appautoscaling_policy" "reports_cpu" {
+  name               = "${var.resource_prefix}-cpu-target"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.reports.resource_id
+  scalable_dimension = aws_appautoscaling_target.reports.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.reports.service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ECSServiceAverageCPUUtilization"
+    }
+    target_value = 70
+  }
+}

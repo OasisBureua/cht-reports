@@ -49,7 +49,9 @@
         "ecr:UntagResource",
         "ecr:PutLifecyclePolicy",
         "ecr:GetLifecyclePolicy",
-        "ecr:DeleteLifecyclePolicy"
+        "ecr:DeleteLifecyclePolicy",
+        "ecr:GetRepositoryPolicy",
+        "ecr:SetRepositoryPolicy"
       ],
       "Resource": "arn:aws:ecr:us-east-1:233636046512:repository/cht-reports-dev-*"
     },
@@ -107,6 +109,7 @@
         "acm:List*",
         "application-autoscaling:*",
         "cloudwatch:*",
+        "cognito-idp:*",
         "ec2:*",
         "ecs:*",
         "elasticloadbalancing:*",
@@ -138,6 +141,31 @@
         "arn:aws:logs:us-east-1:233636046512:log-group:/aws/lambda/cht-reports-dev*",
         "arn:aws:logs:us-east-1:233636046512:log-group:/ecs/cht-reports-dev*"
       ]
+    },
+    {
+      "Sid": "DeployDynamoDBDev",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:*"
+      ],
+      "Resource": [
+        "arn:aws:dynamodb:us-east-1:233636046512:table/cht-dev-report-state",
+        "arn:aws:dynamodb:us-east-1:233636046512:table/cht-dev-report-state/*",
+        "arn:aws:dynamodb:us-east-2:233636046512:table/cht-dev-report-state",
+        "arn:aws:dynamodb:us-east-2:233636046512:table/cht-dev-report-state/*"
+      ]
+    },
+    {
+      "Sid": "ServiceConnectNamespaceRead",
+      "Effect": "Allow",
+      "Action": [
+        "servicediscovery:GetNamespace",
+        "servicediscovery:ListNamespaces",
+        "servicediscovery:GetService",
+        "servicediscovery:ListServices",
+        "servicediscovery:ListTagsForResource"
+      ],
+      "Resource": "*"
     }
   ]
 }

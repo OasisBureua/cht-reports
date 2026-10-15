@@ -1,0 +1,267 @@
+/**
+ * Per-request generation state and retry tracking. Caps retries at 5
+ * attempts so a failing pipeline step doesn't loop forever. Backed by
+ * DynamoDB, not the reports.* Postgres schema. This is orchestration
+ * bookkeeping; CHT PutItem's the row, cht-reports UpdateItem's in place.
+ *
+ * Key: campaign_id (partition) + report_id (sort). Looking a report up by
+ * id alone goes through the report_id GSI.
+ */
+
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { GetCommand, PutCommand, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import type { AppEnv } from '../../config/env';
+import { APP_ENV } from '../../config/config.module';
+import { AwsClients } from '../../aws/aws-clients';
+
+export type GenerationStatus =
+  | 'queued'
+  | 'pulling_data'
+  | 'generating'
+  | 'rendering'
+  | 'uploading'
+  | 'waiting_for_transcript'
+  | 'complete'
+  | 'failed';
+
+export const REPORT_ID_INDEX = 'report_id-index';
+
+export interface GenerationState {
+  requestId: string;
+  campaignId: string;
+  sources: string[];
+  windowStart: string | null;
+  windowEnd: string | null;
+  status: GenerationStatus;
+  attemptCount: number;
+  lastError: string | null;
+  s3KeyPdf: string | null;
+  /** Regenerations so far. Platform owns this: it increments it on Regenerate. */
+  editAttempts: number;
+  /** Version of the last completed upload (v1 = first report). */
+  version: number | null;
+  /** When this job started waiting for a Zoom transcript (CPR-47). */
+  waitingSince: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+@Injectable()
+export class GenerationStateService {
+  private readonly logger = new Logger(GenerationStateService.name);
+
+  constructor(
+    @Inject(APP_ENV) private readonly env: AppEnv,
+    private readonly aws: AwsClients,
+  ) {}
+
+  /**
+   * With a campaignId this is a consistent GetItem on the full key. Without
+   * one it queries the report_id GSI, which is eventually consistent.
+   */
+  async get(requestId: string, campaignId?: string): Promise<GenerationState | null> {
+    if (campaignId) {
+      const result = await this.aws.dynamodb.send(
+        new GetCommand({
+          TableName: this.env.generationStateTable,
+          Key: { campaign_id: campaignId, report_id: requestId },
+          ConsistentRead: true,
+        }),
+      );
+      return result.Item ? this.fromItem(result.Item) : null;
+    }
+
+    const result = await this.aws.dynamodb.send(
+      new QueryCommand({
+        TableName: this.env.generationStateTable,
+        IndexName: REPORT_ID_INDEX,
+        KeyConditionExpression: 'report_id = :report_id',
+        ExpressionAttributeValues: { ':report_id': requestId },
+        Limit: 1,
+      }),
+    );
+    const item = result.Items?.[0];
+    return item ? this.fromItem(item) : null;
+  }
+
+  async initialize(requestId: string, campaignId: string): Promise<GenerationState> {
+    const now = new Date().toISOString();
+    const state: GenerationState = {
+      requestId,
+      campaignId,
+      sources: [],
+      windowStart: null,
+      windowEnd: null,
+      status: 'queued',
+      attemptCount: 0,
+      lastError: null,
+      s3KeyPdf: null,
+      editAttempts: 0,
+      version: null,
+      waitingSince: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await this.aws.dynamodb.send(
+      new PutCommand({
+        TableName: this.env.generationStateTable,
+        Item: this.toItem(state),
+        ConditionExpression: 'attribute_not_exists(report_id)',
+      }),
+    );
+
+    return state;
+  }
+
+  async beginAttempt(requestId: string, status: GenerationStatus): Promise<GenerationState> {
+    const current = await this.require(requestId);
+    const attemptCount = current.attemptCount + 1;
+
+    if (attemptCount > this.env.maxGenerationAttempts) {
+      this.logger.warn(
+        `Request ${requestId} exceeded max generation attempts (${this.env.maxGenerationAttempts})`,
+      );
+      await this.markFailed(requestId, `Exceeded max attempts (${this.env.maxGenerationAttempts})`);
+      throw new Error(
+        `Request ${requestId} exceeded max generation attempts (${this.env.maxGenerationAttempts})`,
+      );
+    }
+
+    return this.update(current, { status, attemptCount, lastError: null });
+  }
+
+  async markStatus(requestId: string, status: GenerationStatus): Promise<GenerationState> {
+    return this.update(await this.require(requestId), { status });
+  }
+
+  async markFailed(requestId: string, error: string): Promise<GenerationState> {
+    return this.update(await this.require(requestId), { status: 'failed', lastError: error });
+  }
+
+  /**
+   * Park the job until Zoom's transcript lands. Keeps the first waiting_since so
+   * the overall wait can time out, and gives back the attempt this check used:
+   * waiting is not a failure.
+   */
+  async markWaiting(requestId: string): Promise<GenerationState> {
+    const current = await this.require(requestId);
+    const now = new Date().toISOString();
+    const result = await this.aws.dynamodb.send(
+      new UpdateCommand({
+        TableName: this.env.generationStateTable,
+        Key: { campaign_id: current.campaignId, report_id: current.requestId },
+        UpdateExpression:
+          'SET #status = :waiting, waiting_since = if_not_exists(waiting_since, :now), attempt_count = :attempts, last_error = :null, #updated_at = :now',
+        ExpressionAttributeNames: { '#status': 'status', '#updated_at': 'updated_at' },
+        ExpressionAttributeValues: {
+          ':waiting': 'waiting_for_transcript',
+          ':now': now,
+          ':attempts': Math.max(0, current.attemptCount - 1),
+          ':null': null,
+        },
+        ReturnValues: 'ALL_NEW',
+      }),
+    );
+    return this.fromItem(result.Attributes!);
+  }
+
+  async markComplete(requestId: string, s3KeyPdf: string, version: number): Promise<GenerationState> {
+    return this.update(await this.require(requestId), {
+      status: 'complete',
+      lastError: null,
+      s3KeyPdf,
+      version,
+    });
+  }
+
+  private async require(requestId: string): Promise<GenerationState> {
+    const state = await this.get(requestId);
+    if (!state) throw new Error(`Report ${requestId} has no generation state row`);
+    return state;
+  }
+
+  private async update(
+    current: GenerationState,
+    patch: Partial<Pick<GenerationState, 'status' | 'attemptCount' | 'lastError' | 's3KeyPdf' | 'version'>>,
+  ): Promise<GenerationState> {
+    const now = new Date().toISOString();
+    const names: Record<string, string> = { '#updated_at': 'updated_at' };
+    const values: Record<string, unknown> = { ':updated_at': now };
+    const sets = ['#updated_at = :updated_at'];
+
+    if (patch.status !== undefined) {
+      names['#status'] = 'status';
+      values[':status'] = patch.status;
+      sets.push('#status = :status');
+    }
+    if (patch.attemptCount !== undefined) {
+      names['#attempt_count'] = 'attempt_count';
+      values[':attempt_count'] = patch.attemptCount;
+      sets.push('#attempt_count = :attempt_count');
+    }
+    if (patch.lastError !== undefined) {
+      names['#last_error'] = 'last_error';
+      values[':last_error'] = patch.lastError;
+      sets.push('#last_error = :last_error');
+    }
+    if (patch.s3KeyPdf !== undefined) {
+      names['#s3_key_pdf'] = 's3_key_pdf';
+      values[':s3_key_pdf'] = patch.s3KeyPdf;
+      sets.push('#s3_key_pdf = :s3_key_pdf');
+    }
+    if (patch.version !== undefined) {
+      names['#version'] = 'version';
+      values[':version'] = patch.version;
+      sets.push('#version = :version');
+    }
+
+    const result = await this.aws.dynamodb.send(
+      new UpdateCommand({
+        TableName: this.env.generationStateTable,
+        Key: { campaign_id: current.campaignId, report_id: current.requestId },
+        UpdateExpression: `SET ${sets.join(', ')}`,
+        ExpressionAttributeNames: names,
+        ExpressionAttributeValues: values,
+        ReturnValues: 'ALL_NEW',
+      }),
+    );
+
+    return this.fromItem(result.Attributes!);
+  }
+
+  private toItem(state: GenerationState): Record<string, unknown> {
+    return {
+      campaign_id: state.campaignId,
+      report_id: state.requestId,
+      sources: state.sources,
+      window_start: state.windowStart,
+      window_end: state.windowEnd,
+      status: state.status,
+      attempt_count: state.attemptCount,
+      last_error: state.lastError,
+      created_at: state.createdAt,
+      updated_at: state.updatedAt,
+      ...(state.s3KeyPdf ? { s3_key_pdf: state.s3KeyPdf } : {}),
+    };
+  }
+
+  private fromItem(item: Record<string, unknown>): GenerationState {
+    return {
+      requestId: item.report_id as string,
+      campaignId: item.campaign_id as string,
+      sources: (item.sources as string[]) ?? [],
+      windowStart: (item.window_start as string) ?? null,
+      windowEnd: (item.window_end as string) ?? null,
+      status: item.status as GenerationStatus,
+      attemptCount: item.attempt_count as number,
+      lastError: (item.last_error as string) ?? null,
+      s3KeyPdf: (item.s3_key_pdf as string) ?? null,
+      editAttempts: (item.edit_attempts as number) ?? 0,
+      version: (item.version as number) ?? null,
+      waitingSince: (item.waiting_since as string) ?? null,
+      createdAt: item.created_at as string,
+      updatedAt: item.updated_at as string,
+    };
+  }
+}

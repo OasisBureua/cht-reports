@@ -1,0 +1,366 @@
+{
+  "campaignId": 9,
+  "campaignName": "[TEST] CPR-49 Dry Run",
+  "windowStart": null,
+  "windowEnd": null,
+  "sources": [
+    "sessions",
+    "attendance",
+    "surveys",
+    "kols"
+  ],
+  "hubspotRawData": null,
+  "platformSlices": [],
+  "sessions": [
+    {
+      "platformToolProgramId": "local-program",
+      "kind": "WEBINAR",
+      "title": "[TEST] CPR-49 Dry Run: Sequencing Velantumab in KRAS G12C NSCLC",
+      "sessionDate": "2026-10-12T19:18:38.380000Z",
+      "zoomMeetingUuid": "local-meeting",
+      "transcriptText": "Dr. Priya Nandakumar: Good evening everyone, and welcome. I'm Priya Nandakumar, and I'll be moderating tonight's Community Health Media program on sequencing velantumab in previously\nDr. Priya Nandakumar: treated KRAS G12C mutant non-small cell lung cancer. We'll have about thirty minutes of discussion with our faculty, and then we'll save\nDr. Priya Nandakumar: time for Q&A at the end, so please drop your questions in the Q&A box as we go.\nDr. Priya Nandakumar: I'm joined by Dr. Marcus Hale, a thoracic medical oncologist at Brightwater Cancer Center, and Dr. Elena Varga, who directs the lung\nDr. Priya Nandakumar: cancer program at Northlake University Medical Center. Welcome to you both.\nDr. Marcus Hale: Thanks Priya, glad to be here.\nDr. Elena Varga: Thank you, it's a pleasure.\nDr. Priya Nandakumar: Marcus, let's start with the data. For people who haven't followed it closely, what did HORIZON-L2 actually show?\nDr. Marcus Hale: So HORIZON-L2 was the randomized phase three trial of velantumab versus docetaxel in patients whose disease had progressed after a platinum doublet\nDr. Marcus Hale: and immunotherapy. Um, the headline was a progression-free survival benefit, a median of about six point eight months versus four point one,\nDr. Marcus Hale: and the hazard ratio was around zero point six. Overall survival is still maturing, and that's an important caveat. Response rates were\nDr. Marcus Hale: roughly forty percent versus fourteen percent with docetaxel.\nDr. Marcus Hale: What struck me most was the durability in the responders. When patients responded, the median duration of response was close to ten\nDr. Marcus Hale: months, which you just don't see with docetaxel in this setting.\nDr. Priya Nandakumar: Elena, does that change what you do on Monday morning?\nDr. Elena Varga: It does, with some nuance. For a patient with a confirmed KRAS G12C mutation who has progressed on chemo immunotherapy and has\nDr. Elena Varga: a reasonable performance status, velantumab is now my preferred second line option. The nuance is in who we're testing and how fast.\nDr. Elena Varga: If we don't have the KRAS result back when the patient progresses, we end up defaulting to docetaxel, and that's a missed\nDr. Elena Varga: opportunity.\nDr. Elena Varga: So honestly the biggest practice change for our group wasn't the drug, it was making sure broad next generation sequencing is ordered\nDr. Elena Varga: at diagnosis and not at progression. We moved to reflex testing on every non-squamous specimen, and we added plasma testing when tissue\nDr. Elena Varga: is going to take more than two weeks.\nDr. Marcus Hale: I'd echo that. In the community, the turnaround time is the real bottleneck. We've had patients wait three or four weeks for\nDr. Marcus Hale: tissue results. Running liquid biopsy in parallel has cut that down to about a week for most of our patients.\nDr. Priya Nandakumar: Let's talk about toxicity, because that's what I hear the most questions about. What should people expect?\nDr. Marcus Hale: The two things to watch are hepatotoxicity and diarrhea. Transaminase elevations were seen in about a third of patients in HORIZON-L2, and\nDr. Marcus Hale: grade three or higher in around eight percent. They tend to show up in the first six to eight weeks. So we\nDr. Marcus Hale: check liver function tests every two weeks for the first two months, then monthly.\nDr. Marcus Hale: Diarrhea is usually low grade and manageable with loperamide, but you have to set expectations up front. I tell every patient: call\nDr. Marcus Hale: us on day one, not day four.\nDr. Elena Varga: And there's one interaction that matters. Patients who had immunotherapy recently seem to have a higher risk of liver toxicity, especially if\nDr. Elena Varga: the last dose was within about six weeks. So we're careful about timing, and some of us will wait a few extra\nDr. Elena Varga: weeks after the last checkpoint inhibitor dose before starting, if the disease allows it.\nDr. Priya Nandakumar: That's a really practical point. How do you manage dose reductions?\nDr. Elena Varga: We follow the label reductions, but I'd say we're quicker to hold and re-challenge at a lower dose than we used to\nDr. Elena Varga: be. In our experience, most patients who have a grade two liver signal can come back at the reduced dose and stay\nDr. Elena Varga: on therapy. Stopping permanently at the first sign of toxicity probably leaves benefit on the table.\nDr. Marcus Hale: Agreed. The other piece is the nurse navigator. Our nurse calls every patient at day ten and day twenty-one. That one change\nDr. Marcus Hale: has kept more people on therapy than anything else we've done.\nDr. Priya Nandakumar: Where does velantumab fit if a patient has brain metastases?\nDr. Marcus Hale: There's some intracranial activity, but the trial excluded untreated or symptomatic brain metastases, so the data are limited. For small, asymptomatic lesions\nDr. Marcus Hale: I'll use it and image closely. For anything symptomatic, I'm treating the brain locally first.\nDr. Elena Varga: Same approach. I'd also say we need a dedicated study in that population, because it's common in KRAS G12C disease and we're\nDr. Elena Varga: extrapolating.\nDr. Priya Nandakumar: Before we turn to the audience, give me one takeaway each.\nDr. Marcus Hale: Test everyone at diagnosis, and run plasma in parallel if tissue is slow. You can't use the drug if you don't know\nDr. Marcus Hale: the mutation.\nDr. Elena Varga: Anticipate the liver toxicity and build the monitoring into your workflow before you start the first patient. Hold, reduce and re-challenge rather\nDr. Elena Varga: than stopping.\nDr. Priya Nandakumar: Great. Let's open it up for questions from the audience. We have quite a few coming in.\nDr. Priya Nandakumar: The first one is from a community oncologist. They ask: if a patient progressed on immunotherapy alone, without chemotherapy, would you still\nDr. Priya Nandakumar: use velantumab second line, or go to a platinum doublet first?\nDr. Marcus Hale: Good question, and that's outside the trial population. HORIZON-L2 required prior platinum. In that situation I'd still favor the platinum doublet second\nDr. Marcus Hale: line for most patients, and keep velantumab for third line, unless there's a reason they can't get chemotherapy.\nDr. Elena Varga: I'd agree, although for a frail patient who isn't a chemo candidate I'd be comfortable going straight to velantumab.\nDr. Priya Nandakumar: Next, from a nurse practitioner: how often do you check liver function, and do you hold for grade one elevations?\nDr. Marcus Hale: Every two weeks for eight weeks, then monthly. We don't hold for grade one, we just repeat sooner. Grade two we hold\nDr. Marcus Hale: until it comes back to grade one, then restart at the reduced dose.\nDr. Priya Nandakumar: A pharmacist is asking about drug interactions, particularly acid reducing agents.\nDr. Elena Varga: Yes, proton pump inhibitors reduce absorption, so we try to avoid them. If a patient really needs acid suppression, we use an\nDr. Elena Varga: H2 blocker and separate the dosing by several hours. Our pharmacist reviews every medication list before the first dose.\nDr. Priya Nandakumar: Here's one about cost and access. A community oncologist in a rural practice says prior authorization has been taking two to three\nDr. Priya Nandakumar: weeks. Any tips?\nDr. Marcus Hale: Start the authorization the day the KRAS result comes back, not the day of progression. And use the manufacturer's bridge program while\nDr. Marcus Hale: you wait. We've had good luck with that.\nDr. Priya Nandakumar: Several people are asking the same thing: is there a role for velantumab in the first line setting?\nDr. Elena Varga: Not yet outside a trial. There are first line combination studies with immunotherapy underway, but given the liver signal we've seen with\nDr. Elena Varga: recent checkpoint inhibitor exposure, I'd want to see that safety data before using any combination.\nDr. Priya Nandakumar: Last question, from a fellow: how do you talk to patients about the modest overall survival data so far?\nDr. Marcus Hale: I'm honest that we don't have the survival result yet. What we do know is that more patients respond, and the responses\nDr. Marcus Hale: last longer, with a side effect profile that's different from chemotherapy and, for most people, easier to live with. Most patients find\nDr. Marcus Hale: that a reasonable trade.\nDr. Elena Varga: And I'd add, framing it around what matters to the patient, whether that's time at home or avoiding hair loss or infusion\nDr. Elena Varga: visits, makes the conversation much easier.\nDr. Priya Nandakumar: That's all the time we have. Thank you, Dr. Hale and Dr. Varga, and thank you all for joining. You'll get a\nDr. Priya Nandakumar: short survey after the program, and we'd really appreciate your feedback. Good night."
+    }
+  ],
+  "surveyResponses": [
+    {
+      "respondentId": "local-01",
+      "source": "native",
+      "surveyType": "FEEDBACK",
+      "submittedAt": "2026-10-12T20:30:00Z",
+      "answers": {
+        "q1_role": "Medical Oncologist",
+        "q2_setting": "Community without research",
+        "q3_testing_timing": "At progression",
+        "q4_line": "Second line after chemo-immunotherapy",
+        "q5_lft_monitoring": "Every two weeks",
+        "q6_barriers": [
+          "Testing turnaround time",
+          "Prior authorization delays"
+        ],
+        "q7_confidence": "Somewhat confident",
+        "q8_change": "Moving to reflex NGS at diagnosis and running plasma in parallel."
+      }
+    },
+    {
+      "respondentId": "local-02",
+      "source": "native",
+      "surveyType": "FEEDBACK",
+      "submittedAt": "2026-10-12T20:30:00Z",
+      "answers": {
+        "q1_role": "Medical Oncologist",
+        "q2_setting": "Community with research",
+        "q3_testing_timing": "At diagnosis (reflex)",
+        "q4_line": "Second line after chemo-immunotherapy",
+        "q5_lft_monitoring": "Every two weeks",
+        "q6_barriers": [
+          "Liver toxicity concerns"
+        ],
+        "q7_confidence": "Very confident",
+        "q8_change": "Nurse navigator calls at day 10 and day 21."
+      }
+    },
+    {
+      "respondentId": "local-03",
+      "source": "native",
+      "surveyType": "FEEDBACK",
+      "submittedAt": "2026-10-12T20:30:00Z",
+      "answers": {
+        "q1_role": "Medical Oncologist",
+        "q2_setting": "Community without research",
+        "q3_testing_timing": "Varies",
+        "q4_line": "Second line after chemo-immunotherapy",
+        "q5_lft_monitoring": "Every two weeks",
+        "q6_barriers": [
+          "Testing turnaround time",
+          "Liver toxicity concerns",
+          "Prior authorization delays"
+        ],
+        "q7_confidence": "Somewhat confident",
+        "q8_change": "How long to wait after the last checkpoint inhibitor dose?"
+      }
+    },
+    {
+      "respondentId": "local-04",
+      "source": "native",
+      "surveyType": "FEEDBACK",
+      "submittedAt": "2026-10-12T20:30:00Z",
+      "answers": {
+        "q1_role": "Pulmonologist",
+        "q2_setting": "Hybrid",
+        "q3_testing_timing": "At diagnosis (ordered by me)",
+        "q4_line": "Not sure yet",
+        "q5_lft_monitoring": "Monthly",
+        "q6_barriers": [
+          "Testing turnaround time"
+        ],
+        "q7_confidence": "Not confident",
+        "q8_change": ""
+      }
+    },
+    {
+      "respondentId": "local-05",
+      "source": "native",
+      "surveyType": "FEEDBACK",
+      "submittedAt": "2026-10-12T20:30:00Z",
+      "answers": {
+        "q1_role": "Pharmacist",
+        "q2_setting": "Academic / teaching",
+        "q3_testing_timing": "At diagnosis (reflex)",
+        "q4_line": "Second line after chemo-immunotherapy",
+        "q5_lft_monitoring": "Every two weeks",
+        "q6_barriers": [
+          "Drug interactions (acid reducers)",
+          "Liver toxicity concerns"
+        ],
+        "q7_confidence": "Very confident",
+        "q8_change": "Pharmacist review of every medication list before the first dose."
+      }
+    },
+    {
+      "respondentId": "local-06",
+      "source": "native",
+      "surveyType": "FEEDBACK",
+      "submittedAt": "2026-10-12T20:30:00Z",
+      "answers": {
+        "q1_role": "Advanced Practice Provider (NP/PA)",
+        "q2_setting": "Community with research",
+        "q3_testing_timing": "At progression",
+        "q4_line": "Second line after chemo-immunotherapy",
+        "q5_lft_monitoring": "Every two weeks",
+        "q6_barriers": [
+          "Liver toxicity concerns",
+          "Prior authorization delays"
+        ],
+        "q7_confidence": "Somewhat confident",
+        "q8_change": "Setting expectations about diarrhea on day one."
+      }
+    },
+    {
+      "respondentId": "local-07",
+      "source": "native",
+      "surveyType": "FEEDBACK",
+      "submittedAt": "2026-10-12T20:30:00Z",
+      "answers": {
+        "q1_role": "Other",
+        "q2_setting": "Academic / teaching",
+        "q3_testing_timing": "At diagnosis (reflex)",
+        "q4_line": "Only in a clinical trial",
+        "q5_lft_monitoring": "Not sure",
+        "q6_barriers": [
+          "Immature overall survival data"
+        ],
+        "q7_confidence": "Somewhat confident",
+        "q8_change": "Interested in intracranial data."
+      }
+    },
+    {
+      "respondentId": "local-08",
+      "source": "native",
+      "surveyType": "FEEDBACK",
+      "submittedAt": "2026-10-12T20:30:00Z",
+      "answers": {
+        "q1_role": "Medical Oncologist",
+        "q2_setting": "Community without research",
+        "q3_testing_timing": "At progression",
+        "q4_line": "Third line or later",
+        "q5_lft_monitoring": "Monthly",
+        "q6_barriers": [
+          "Immature overall survival data",
+          "Testing turnaround time"
+        ],
+        "q7_confidence": "Not confident",
+        "q8_change": "Want to see overall survival before using it routinely."
+      }
+    }
+  ],
+  "surveyQuestions": [
+    {
+      "id": "q1_role",
+      "prompt": "Which best describes your primary role?",
+      "type": "single_choice",
+      "options": [
+        "Medical Oncologist",
+        "Pulmonologist",
+        "Advanced Practice Provider (NP/PA)",
+        "Pharmacist",
+        "Other"
+      ],
+      "surveyType": "FEEDBACK"
+    },
+    {
+      "id": "q2_setting",
+      "prompt": "Which best describes your practice setting?",
+      "type": "single_choice",
+      "options": [
+        "Academic / teaching",
+        "Community with research",
+        "Community without research",
+        "Hybrid"
+      ],
+      "surveyType": "FEEDBACK"
+    },
+    {
+      "id": "q3_testing_timing",
+      "prompt": "When do you typically order broad molecular testing for non-squamous NSCLC?",
+      "type": "single_choice",
+      "options": [
+        "At diagnosis (reflex)",
+        "At diagnosis (ordered by me)",
+        "At progression",
+        "Varies"
+      ],
+      "surveyType": "FEEDBACK"
+    },
+    {
+      "id": "q4_line",
+      "prompt": "After this program, where would you use velantumab for KRAS G12C NSCLC?",
+      "type": "single_choice",
+      "options": [
+        "Second line after chemo-immunotherapy",
+        "Third line or later",
+        "Only in a clinical trial",
+        "Not sure yet"
+      ],
+      "surveyType": "FEEDBACK"
+    },
+    {
+      "id": "q5_lft_monitoring",
+      "prompt": "How often would you check liver function in the first two months?",
+      "type": "single_choice",
+      "options": [
+        "Every two weeks",
+        "Monthly",
+        "Only if symptomatic",
+        "Not sure"
+      ],
+      "surveyType": "FEEDBACK"
+    },
+    {
+      "id": "q6_barriers",
+      "prompt": "Biggest barriers to using velantumab in your practice (select up to 3)",
+      "type": "multi_choice",
+      "options": [
+        "Testing turnaround time",
+        "Prior authorization delays",
+        "Liver toxicity concerns",
+        "Immature overall survival data",
+        "Drug interactions (acid reducers)",
+        "None"
+      ],
+      "surveyType": "FEEDBACK"
+    },
+    {
+      "id": "q7_confidence",
+      "prompt": "How confident are you managing velantumab toxicities after this program?",
+      "type": "single_choice",
+      "options": [
+        "Very confident",
+        "Somewhat confident",
+        "Not confident"
+      ],
+      "surveyType": "FEEDBACK"
+    },
+    {
+      "id": "q8_change",
+      "prompt": "What will you change in your practice, and what questions remain for the faculty?",
+      "type": "long_text",
+      "options": null,
+      "surveyType": "FEEDBACK"
+    }
+  ],
+  "kols": [
+    {
+      "name": "Dr. Marcus Hale",
+      "title": "MD, Thoracic Medical Oncologist",
+      "institution": "Brightwater Cancer Center"
+    },
+    {
+      "name": "Dr. Elena Varga",
+      "title": "MD, Director, Lung Cancer Program",
+      "institution": "Northlake University Medical Center"
+    }
+  ],
+  "registeredCount": 12,
+  "attendedCount": 10,
+  "avgMinutesWatched": 0.0,
+  "attendees": [
+    {
+      "specialty": "Medical Oncology",
+      "institution": "Lakeshore Community Oncology",
+      "minutesWatched": null
+    },
+    {
+      "specialty": "Medical Oncology",
+      "institution": "Riverbend Medical Group",
+      "minutesWatched": null
+    },
+    {
+      "specialty": "Medical Oncology",
+      "institution": "Lakeshore Community Oncology",
+      "minutesWatched": null
+    },
+    {
+      "specialty": "Pulmonology",
+      "institution": "Cedar Valley Health",
+      "minutesWatched": null
+    },
+    {
+      "specialty": "Pharmacy",
+      "institution": "Summit Regional Hospital",
+      "minutesWatched": null
+    },
+    {
+      "specialty": "Nurse Practitioner",
+      "institution": "Riverbend Medical Group",
+      "minutesWatched": null
+    },
+    {
+      "specialty": "Radiation Oncology",
+      "institution": "Northlake University Medical Center",
+      "minutesWatched": null
+    },
+    {
+      "specialty": "Medical Oncology",
+      "institution": null,
+      "minutesWatched": null
+    },
+    {
+      "specialty": "Pathology",
+      "institution": "Cedar Valley Health",
+      "minutesWatched": null
+    },
+    {
+      "specialty": "Medical Oncology",
+      "institution": "Summit Regional Hospital",
+      "minutesWatched": null
+    }
+  ],
+  "template": null,
+  "inputCompleteness": {
+    "sessions": {
+      "fetchedAt": "2026-10-12T21:00:00Z",
+      "rowCount": 1,
+      "status": "ok"
+    },
+    "attendance": {
+      "fetchedAt": "2026-10-12T21:00:00Z",
+      "rowCount": 1,
+      "status": "ok"
+    },
+    "surveys": {
+      "fetchedAt": "2026-10-12T21:00:00Z",
+      "rowCount": 1,
+      "status": "ok"
+    },
+    "kols": {
+      "fetchedAt": "2026-10-12T21:00:00Z",
+      "rowCount": 1,
+      "status": "ok"
+    },
+    "hubspot": {
+      "fetchedAt": null,
+      "rowCount": 0,
+      "status": "missing"
+    }
+  }
+}

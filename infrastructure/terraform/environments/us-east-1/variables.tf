@@ -32,19 +32,50 @@ variable "generate_schedule_expression" {
 }
 
 variable "enable_generate_schedule" {
-  description = "Enable the EventBridge generate rule"
+  description = "Enable the EventBridge generate rule. Off: the ECS service generates reports on demand (CPR-34)."
   type        = bool
-  default     = true
+  default     = false
 }
 
+# Origin or /api/public URL. The Nest worker rewrites to /api/admin for
+# GET .../campaigns/{id}/report-packet.
 variable "contenthub_base_url" {
-  description = "Content Hub API base URL (non-secret)"
+  description = "Content Hub API base URL (non-secret). Worker calls <origin>/api/campaigns/{id}/report-packet."
   type        = string
   default     = ""
 }
 
 variable "contenthub_api_key" {
   description = "Content Hub API key (GitHub Environment secret → TF_VAR_contenthub_api_key)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+# cht-platform-tool API base for POST /internal/reports/{id}/ready (CPR-35):
+# Platform emails the report's notify list. Empty skips the notification.
+variable "platform_api_base_url" {
+  description = "cht-platform-tool API base, e.g. https://devapp.communityhealth.media/api"
+  type        = string
+  default     = ""
+}
+
+variable "platform_reports_notify_scope" {
+  description = "OAuth scope the reports M2M client requests for the report-ready call"
+  type        = string
+  default     = "platform/reports.notify"
+}
+
+# Unused by the ECS worker (packet comes from Content Hub). Kept so existing
+# GitHub TF_VAR_* / tfvars do not break until those secrets are retired.
+variable "platform_tool_base_url" {
+  description = "Unused by cht-reports worker (Hub packet API). Placeholder for existing tfvars."
+  type        = string
+  default     = ""
+}
+
+variable "platform_tool_api_key" {
+  description = "Unused by cht-reports worker. Placeholder so existing GitHub TF_VAR_* do not break."
   type        = string
   default     = ""
   sensitive   = true
@@ -60,4 +91,77 @@ variable "s3_force_destroy" {
   description = "Allow terraform destroy to empty the reports bucket (dev only)"
   type        = bool
   default     = false
+}
+
+# ============================================
+# ECS orchestration service (joins the shared platform cluster)
+# ============================================
+
+variable "platform_cluster_name" {
+  description = "cht-platform-tool's existing ECS cluster to join (cht-dev-cluster / cht-platform-cluster)."
+  type        = string
+}
+
+variable "platform_vpc_name" {
+  description = "Name tag on cht-platform-tool's existing VPC."
+  type        = string
+}
+
+variable "platform_backend_security_group_name" {
+  description = "Name tag on cht-platform-tool's backend security group, scopes Service Connect ingress."
+  type        = string
+}
+
+variable "service_connect_namespace_name" {
+  description = "Existing Service Connect namespace shared by cht-platform-tool and cht-companion (cht-dev.local / cht.local)."
+  type        = string
+}
+
+variable "reports_service_image_uri" {
+  description = "ECR image URI (with tag) for the cht-reports NestJS orchestration service."
+  type        = string
+}
+
+variable "report_request_visibility_timeout_seconds" {
+  description = "Visibility timeout for the on-demand report-requests queue. Must exceed the longest expected generation time, not the Lambda timeout."
+  type        = number
+  default     = 900
+}
+
+# Reports M2M client (cht-reports-m2m-{env}) + SM cht-{env}-cognito-m2m-reports.
+# Hub owns the `hub` RS; this stack owns the caller. Empty pool id skips create.
+variable "cognito_user_pool_id" {
+  description = "Shared CHT Cognito pool (cht-dev-users / cht-platform-users). Empty skips the M2M client."
+  type        = string
+  default     = ""
+}
+
+variable "cognito_auth_domain" {
+  description = "Cognito auth domain host for the token URL, e.g. chm-dev.auth.us-east-1.amazoncognito.com"
+  type        = string
+  default     = ""
+}
+
+variable "contenthub_m2m_secret_name" {
+  description = "SM name for the reports M2M JSON. Empty uses cht-{env}-cognito-m2m-reports."
+  type        = string
+  default     = ""
+}
+
+variable "reports_m2m_import_client_id" {
+  description = "Existing cht-reports-m2m-{env} client id to import. Empty creates a new client (do not use on live envs)."
+  type        = string
+  default     = ""
+}
+
+variable "companion_generate_scope" {
+  description = "OAuth scope the reports M2M client requests for companion /generate"
+  type        = string
+  default     = "companion/generate.invoke"
+}
+
+variable "platform_tool_role_arns" {
+  description = "cht-platform-tool backend task role ARNs allowed to enqueue report requests and write report job items (CPR-34)."
+  type        = list(string)
+  default     = []
 }

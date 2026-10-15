@@ -6,6 +6,7 @@ resource "aws_kms_key" "s3" {
   description             = "${local.prefix} S3 encryption key"
   deletion_window_in_days = var.deletion_window_in_days
   enable_key_rotation     = true
+  policy                  = local.s3_key_policy
 
   tags = {
     Name        = "${local.prefix}-s3-key"
@@ -40,6 +41,7 @@ resource "aws_kms_key" "sqs" {
   description             = "${local.prefix} SQS encryption key"
   deletion_window_in_days = var.deletion_window_in_days
   enable_key_rotation     = true
+  policy                  = local.sqs_key_policy
 
   tags = {
     Name        = "${local.prefix}-sqs-key"
@@ -106,6 +108,24 @@ resource "aws_kms_alias" "cloudwatch" {
   target_key_id = aws_kms_key.cloudwatch.key_id
 }
 
+resource "aws_kms_key" "dynamodb" {
+  description             = "${local.prefix} DynamoDB encryption key"
+  deletion_window_in_days = var.deletion_window_in_days
+  enable_key_rotation     = true
+  policy                  = local.dynamodb_key_policy
+
+  tags = {
+    Name        = "${local.prefix}-dynamodb-key"
+    Environment = var.environment
+    Service     = "dynamodb"
+  }
+}
+
+resource "aws_kms_alias" "dynamodb" {
+  name          = "alias/${local.prefix}-dynamodb"
+  target_key_id = aws_kms_key.dynamodb.key_id
+}
+
 resource "aws_kms_key" "sns" {
   description             = "${local.prefix} SNS encryption key"
   deletion_window_in_days = var.deletion_window_in_days
@@ -160,4 +180,54 @@ resource "aws_kms_key" "sns" {
 resource "aws_kms_alias" "sns" {
   name          = "alias/${local.prefix}-sns"
   target_key_id = aws_kms_key.sns.key_id
+}
+
+# SQS, DynamoDB, and S3 keys: account-root (IAM policies keep working for
+# this repo's own roles), plus cht-platform-tool's task role via the
+# matching kms:ViaService. Without the S3 statement, Platform GetObject on
+# SSE-KMS artifacts fails even with a bucket policy.
+locals {
+  root_key_statement = {
+    Sid       = "EnableRootAccountPermissions"
+    Effect    = "Allow"
+    Principal = { AWS = "arn:aws:iam::${var.aws_account_id}:root" }
+    Action    = "kms:*"
+    Resource  = "*"
+  }
+
+  s3_key_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = concat([local.root_key_statement], length(var.platform_tool_role_arns) == 0 ? [] : [{
+      Sid       = "PlatformToolViaS3"
+      Effect    = "Allow"
+      Principal = { AWS = var.platform_tool_role_arns }
+      Action    = ["kms:Decrypt"]
+      Resource  = "*"
+      Condition = { StringEquals = { "kms:ViaService" = "s3.${var.aws_region}.amazonaws.com" } }
+    }])
+  })
+
+  sqs_key_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = concat([local.root_key_statement], length(var.platform_tool_role_arns) == 0 ? [] : [{
+      Sid       = "PlatformToolViaSqs"
+      Effect    = "Allow"
+      Principal = { AWS = var.platform_tool_role_arns }
+      Action    = ["kms:GenerateDataKey", "kms:Decrypt"]
+      Resource  = "*"
+      Condition = { StringEquals = { "kms:ViaService" = "sqs.${var.aws_region}.amazonaws.com" } }
+    }])
+  })
+
+  dynamodb_key_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = concat([local.root_key_statement], length(var.platform_tool_role_arns) == 0 ? [] : [{
+      Sid       = "PlatformToolViaDynamoDB"
+      Effect    = "Allow"
+      Principal = { AWS = var.platform_tool_role_arns }
+      Action    = ["kms:Encrypt", "kms:Decrypt", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:DescribeKey", "kms:CreateGrant"]
+      Resource  = "*"
+      Condition = { StringEquals = { "kms:ViaService" = "dynamodb.${var.aws_region}.amazonaws.com" } }
+    }])
+  })
 }

@@ -38,6 +38,16 @@ output "cloudwatch_kms_key_arn" {
   value       = aws_kms_key.cloudwatch.arn
 }
 
+output "dynamodb_kms_key_id" {
+  description = "DynamoDB KMS key ID"
+  value       = aws_kms_key.dynamodb.id
+}
+
+output "dynamodb_kms_key_arn" {
+  description = "DynamoDB KMS key ARN"
+  value       = aws_kms_key.dynamodb.arn
+}
+
 output "sns_kms_key_id" {
   description = "SNS KMS key ID"
   value       = aws_kms_key.sns.id

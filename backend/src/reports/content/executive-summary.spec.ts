@@ -1,0 +1,151 @@
+import { NarrativeParseError, parseNarrative } from './executive-summary';
+import { buildSurveyCharts, questionLabel } from './survey-charts';
+import { estimateCostUsd, fitToLimit } from '../orchestrator';
+
+describe('parseNarrative', () => {
+  it('reads a fenced JSON reply and fills missing keys with empty lists', () => {
+    const n = parseNarrative('Here you go:\n```json\n{"programTitle":"T","objectives":["Review X"],"kols":[{"name":"Dr. A","affiliation":null}]}\n```');
+    expect(n.programTitle).toBe('T');
+    expect(n.objectives).toEqual(['Review X']);
+    expect(n.kols).toEqual([{ name: 'Dr. A', affiliation: null }]);
+    expect(n.keyTakeaways).toEqual([]);
+    expect(n.format).toBeNull();
+    expect(n.conclusions).toEqual([]);
+  });
+
+  it('accepts only known formats', () => {
+    expect(parseNarrative('{"format":"live_webinar"}').format).toBe('live_webinar');
+    expect(parseNarrative('{"format":"podcast"}').format).toBeNull();
+  });
+
+  it('drops malformed items instead of failing', () => {
+    const n = parseNarrative(
+      JSON.stringify({
+        executiveSummary: [{ claim: 'A', body: 'B' }, { claim: 'no body' }, 'str', null],
+        quotes: [{ text: 'q', speaker: '' }, { text: 'ok', speaker: 'Dr. Y' }],
+        conclusions: [{ claim: 'C', body: 'D' }],
+      }),
+    );
+    // Executive summary items are headlines; the body is optional.
+    expect(n.executiveSummary).toEqual([
+      { claim: 'A', body: 'B' },
+      { claim: 'no body', body: '' },
+    ]);
+    expect(n.quotes).toEqual([{ text: 'ok', speaker: 'Dr. Y' }]);
+    expect(n.conclusions).toEqual([{ claim: 'C', body: 'D', recommendation: null }]);
+  });
+
+  it('repairs unescaped quotes inside strings and a reply cut off mid-list', () => {
+    const n = parseNarrative('{"quotes":[{"text":"It was "amazing" to see","speaker":"Dr. Yan"}],"objectives":["Review A","Review');
+    expect(n.quotes).toEqual([{ text: 'It was "amazing" to see', speaker: 'Dr. Yan' }]);
+    expect(n.objectives[0]).toBe('Review A');
+  });
+
+  it('reads the 1.3.0 keys', () => {
+    const n = parseNarrative(
+      JSON.stringify({
+        objectives: [{ title: 'Review A', detail: 'Covered B.' }, { title: 'Discuss C' }, 'Plain string'],
+        overviewHighlights: ['Topic one', ''],
+        quotes: [
+          { text: 'q1', speaker: 'Dr. X', source: 'faculty' },
+          { text: 'q2', speaker: 'Attendee', source: 'attendee' },
+          { text: 'q3', speaker: 'Dr. Y', source: 'other' },
+        ],
+        surveyTakeaways: [{ theme: 'T', points: ['63% (n=8) said so.'] }, { theme: 'Empty', points: [] }],
+        nextSteps: [{ claim: 'Do X', body: 'Because Y.' }],
+      }),
+    );
+    expect(n.objectives).toEqual([{ title: 'Review A', detail: 'Covered B.' }, { title: 'Discuss C', detail: null }, 'Plain string']);
+    expect(n.overviewHighlights).toEqual(['Topic one']);
+    expect(n.quotes).toEqual([
+      { text: 'q1', speaker: 'Dr. X', source: 'faculty' },
+      { text: 'q2', speaker: 'Attendee', source: 'attendee' },
+      { text: 'q3', speaker: 'Dr. Y' },
+    ]);
+    expect(n.surveyTakeaways).toEqual([{ theme: 'T', points: ['63% (n=8) said so.'] }]);
+    expect(n.nextSteps).toEqual([{ claim: 'Do X', body: 'Because Y.' }]);
+  });
+
+  it('throws when there is no JSON object', () => {
+    expect(() => parseNarrative('# Executive Summary\nplain markdown')).toThrow(NarrativeParseError);
+  });
+});
+
+describe('buildSurveyCharts', () => {
+  it('counts single and multi-select answers, skips free text, orders by question number', () => {
+    const charts = buildSurveyCharts([
+      { q2_setting: 'Community', q10_factors: ['Cost', 'Efficacy'], q3_change: 'I will re-test HER2-0 patients more often going forward in clinic, especially after progression on endocrine therapy.' },
+      { q2_setting: 'Academic', q10_factors: ['Cost'] },
+      { q2_setting: 'Community' },
+    ]);
+    expect(charts.map((c) => c.question)).toEqual(['Setting', 'Factors']);
+    expect(charts[0]).toEqual({
+      question: 'Setting',
+      responses: 3,
+      multiSelect: false,
+      options: [
+        { label: 'Community', count: 2 },
+        { label: 'Academic', count: 1 },
+      ],
+    });
+    expect(charts[1]).toMatchObject({ responses: 2, multiSelect: true, options: [{ label: 'Cost', count: 2 }, { label: 'Efficacy', count: 1 }] });
+  });
+
+  it('uses the question schema for labels and option order (CPR-43)', () => {
+    const longOption = 'I will change how I sequence therapy for HER2-low patients after progression on endocrine therapy';
+    const charts = buildSurveyCharts(
+      [
+        { q2_setting: 'Community', q5_change: longOption, q9_comments: 'Great session' },
+        { q2_setting: 'Academic', q5_change: longOption, q1_extra: 'Yes' },
+        { q2_setting: 'Community', q5_change: 'No change' },
+      ],
+      [
+        { id: 'q5_change', prompt: 'Will this change your practice?', type: 'single_choice', options: ['No change', longOption] },
+        { id: 'q2_setting', prompt: 'What is your practice setting?', type: 'single_choice', options: ['Academic', 'Community', 'Hospital'] },
+        { id: 'q9_comments', prompt: 'Comments', type: 'long_text' },
+      ],
+    );
+    expect(charts.map((c) => c.question)).toEqual([
+      'Will this change your practice?',
+      'What is your practice setting?',
+      'Extra',
+    ]);
+    expect(charts[0].options).toEqual([
+      { label: 'No change', count: 1 },
+      { label: longOption, count: 2 },
+    ]);
+    expect(charts[1].options).toEqual([
+      { label: 'Academic', count: 1 },
+      { label: 'Community', count: 2 },
+      { label: 'Hospital', count: 0 },
+    ]);
+  });
+
+  it('labels keys readably', () => {
+    expect(questionLabel('q1_practice_setting')).toBe('Practice setting');
+    expect(questionLabel('yearsInPractice')).toBe('Years in practice');
+  });
+});
+
+describe('fitToLimit', () => {
+  it('keeps everything when it fits', () => {
+    expect(fitToLimit(['A', 'B'], 'T', 100)).toBe('A\n\nB\n\nT');
+  });
+
+  it('trims only the transcripts and marks the cut', () => {
+    const out = fitToLimit(['HEAD'], 'x'.repeat(500), 120);
+    expect(out.length).toBeLessThanOrEqual(120);
+    expect(out.startsWith('HEAD\n\n')).toBe(true);
+    expect(out).toContain('[Transcript truncated to fit the input limit.]');
+  });
+});
+
+describe('estimateCostUsd', () => {
+  it('prices a run at Claude Sonnet 5 list rates', () => {
+    expect(estimateCostUsd({ tokensInput: 23571, tokensOutput: 8192 })).toBe('~$0.129');
+  });
+
+  it('says unknown without usage', () => {
+    expect(estimateCostUsd({})).toBe('cost unknown');
+  });
+});

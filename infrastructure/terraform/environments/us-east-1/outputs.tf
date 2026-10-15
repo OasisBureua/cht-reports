@@ -33,16 +33,6 @@ output "reports_bucket" {
   value       = module.s3_reports.bucket_id
 }
 
-output "generate_queue_url" {
-  description = "SQS generate queue URL"
-  value       = module.sqs.queue_url
-}
-
-output "generate_queue_arn" {
-  description = "SQS generate queue ARN"
-  value       = module.sqs.queue_arn
-}
-
 output "alerts_topic_arn" {
   description = "SNS alerts topic"
   value       = module.sns_alerts.topic_arn
@@ -56,4 +46,35 @@ output "app_secrets_arn" {
 output "generate_schedule_rule" {
   description = "EventBridge generate rule name"
   value       = module.generate_schedule.rule_name
+}
+
+# What cht-platform-tool's generate BFF (CPR-30) needs.
+output "report_requests_queue_url" {
+  description = "SQS queue the generate BFF sends { reportId } to"
+  value       = module.sqs_report_requests.queue_url
+}
+
+output "report_jobs_table_name" {
+  description = "DynamoDB report job table (campaign_id + report_id)"
+  value       = module.dynamodb.table_name
+}
+
+output "report_jobs_report_index" {
+  description = "GSI for looking a report up by report_id alone"
+  value       = module.dynamodb.report_index_name
+}
+
+output "reports_m2m_client_id" {
+  description = "cht-reports-m2m-{env} Cognito client id (null when cognito_user_pool_id is empty)"
+  value       = try(module.reports_m2m[0].client_id, null)
+}
+
+output "reports_m2m_secret_name" {
+  description = "SM name cht-{env}-cognito-m2m-reports"
+  value       = try(module.reports_m2m[0].secret_name, null)
+}
+
+output "reports_m2m_secret_arn" {
+  description = "SM ARN for reports M2M (hub/reports.read, platform/reports.notify, companion/generate.invoke)"
+  value       = try(module.reports_m2m[0].secret_arn, null)
 }

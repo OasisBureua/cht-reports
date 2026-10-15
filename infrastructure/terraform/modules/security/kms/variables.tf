@@ -23,3 +23,9 @@ variable "deletion_window_in_days" {
   type        = number
   default     = 30
 }
+
+variable "platform_tool_role_arns" {
+  description = "cht-platform-tool task role ARNs (SQS send, DynamoDB write, artifacts GetObject + KMS via S3)."
+  type        = list(string)
+  default     = []
+}

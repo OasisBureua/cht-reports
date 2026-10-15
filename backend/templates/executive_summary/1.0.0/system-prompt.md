@@ -1,0 +1,1 @@
+You are generating an Executive Summary report for a CHM medical education campaign. Use only the transcript, survey, platform metric, and HubSpot data provided. Do not invent data not present in the input.

@@ -1,26 +1,23 @@
 # CHT Reports infrastructure
 
-AWS infrastructure for containerized report Lambdas using Terraform.
+AWS infrastructure for the report generation service, using Terraform.
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────┐
-│              EventBridge schedule             │
-└──────────────────────┬───────────────────────┘
-                       ▼
-        ┌──────────────────────────────┐
-        │  SQS generate queue + DLQ    │
-        └──────────────┬───────────────┘
-                       ▼
-        ┌──────────────────────────────┐
-        │  Lambda (container image)    │
-        │  alias: live                 │
-        └──────────────┬───────────────┘
-                       ▼
-        ┌──────────────────────────────┐
-        │  S3 reports bucket (KMS)     │
-        └──────────────────────────────┘
+cht-platform-tool (generate BFF)
+   │  PutItem cht-{env}-report-state   (DynamoDB, global: us-east-1 + us-east-2)
+   │  SendMessage { reportId }
+   ▼
+SQS cht-{env}-report-requests  (+ cht-{env}-report-requests_dlq)
+   ▼
+ECS service cht-reports-{env} (shared platform cluster, Service Connect)
+   │  Content Hub GET /api/campaigns/{id}/report-packet
+   │  cht-companion /generate
+   ▼
+S3 reports bucket (KMS, vN keys, Standard-IA after 30 days)
+   ▼
+cht-platform-tool POST /api/internal/reports/{id}/ready ──► SES email (CPR-35)
 ```
 
 ## Modules
@@ -28,6 +25,7 @@ AWS infrastructure for containerized report Lambdas using Terraform.
 ### Security
 - **KMS**: keys for S3, Secrets Manager, SQS, CloudWatch, SNS
 - **Secrets Manager**: integration credentials
+- **Reports M2M**: Cognito app client `cht-reports-m2m-{env}` + SM `cht-{env}-cognito-m2m-reports` (imported; Hub owns the `hub` RS)
 
 ### Compute
 - **ECR**: one repository per Lambda

@@ -34,6 +34,26 @@ resource "aws_s3_bucket_public_access_block" "reports" {
   restrict_public_buckets = true
 }
 
+# Platform streams PDFs through cht-dev-ecs-task / cht-platform-ecs-task.
+# Same resource-policy pattern as the report-state table and request queue.
+resource "aws_s3_bucket_policy" "platform_tool_read" {
+  count = length(var.platform_tool_role_arns) > 0 ? 1 : 0
+
+  bucket = aws_s3_bucket.reports.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "PlatformToolGetReports"
+        Effect    = "Allow"
+        Principal = { AWS = var.platform_tool_role_arns }
+        Action    = ["s3:GetObject"]
+        Resource  = ["${aws_s3_bucket.reports.arn}/reports/*"]
+      },
+    ]
+  })
+}
+
 resource "aws_s3_bucket_lifecycle_configuration" "reports" {
   bucket = aws_s3_bucket.reports.id
 
@@ -45,6 +65,22 @@ resource "aws_s3_bucket_lifecycle_configuration" "reports" {
 
     noncurrent_version_expiration {
       noncurrent_days = 90
+    }
+  }
+
+  # CPR-35: reports are rarely re-downloaded after the first weeks. 30 days
+  # is the S3 minimum before Standard-IA (the ticket's 7 is not allowed).
+  rule {
+    id     = "reports-standard-ia"
+    status = "Enabled"
+
+    filter {
+      prefix = "reports/"
+    }
+
+    transition {
+      days          = 30
+      storage_class = "STANDARD_IA"
     }
   }
 }
