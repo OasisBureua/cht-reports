@@ -15,7 +15,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { AppEnv } from '../config/env';
 import { APP_ENV } from '../config/config.module';
-import { CompanionClient } from '../companion/companion.client';
+import { CompanionClient, CompanionGenerationError, TOKEN_BUDGET_EXCEEDED } from '../companion/companion.client';
 import { ContentHubClient } from './packet/content-hub.client';
 import type { ReportInputPacket } from './packet/report-packet.types';
 import { ReportDocService } from './render/report-doc.service';
@@ -154,6 +154,13 @@ export class ReportGenerationOrchestrator {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`Request ${requestId} failed: ${message}`);
+      // CPR-21: the day's token budget is used up. A retry before 00:00 UTC
+      // fails the same way, so fail the report with companion's own message
+      // (admins see it in Platform) and return, so SQS drops the message.
+      if (err instanceof CompanionGenerationError && err.code === TOKEN_BUDGET_EXCEEDED) {
+        await this.state.markFailed(requestId, err.companionMessage ?? message);
+        return;
+      }
       await this.state.markFailed(requestId, message);
       throw err;
     }

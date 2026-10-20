@@ -130,6 +130,27 @@ describe('CompanionClient', () => {
     );
   });
 
+  it('keeps the status, companion error code and plain message on the error (CPR-21)', async () => {
+    const budget = 'The daily report generation budget (500,000 tokens) is used up. It resets at 00:00 UTC.';
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      json: async () => ({ error: { code: 'token_budget_exceeded', message: budget, retry_after_ms: 1000 } }),
+    }) as unknown as typeof fetch;
+
+    const err = await new CompanionClient(testEnv, tokenStub('tok-1'))
+      .generate({ systemPrompt: 'System', userContent: 'User' })
+      .catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(CompanionGenerationError);
+    expect(err).toMatchObject({
+      status: 429,
+      code: 'token_budget_exceeded',
+      companionMessage: budget,
+      message: `companion /generate returned 429: ${budget}`,
+    });
+  });
+
   it('falls back to a generic message if the error response is not JSON', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: false,
