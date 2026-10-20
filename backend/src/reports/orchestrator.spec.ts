@@ -1,4 +1,13 @@
-import { QA_CAPTURE_NOTE, ReportGenerationOrchestrator } from './orchestrator';
+import {
+  MIN_TRANSCRIPT_ROOM,
+  QA_CAPTURE_NOTE,
+  ReportGenerationOrchestrator,
+  USER_CONTENT_LIMIT,
+  buildManifest,
+  type GeneratedReport,
+  type Revision,
+  type RunManifest,
+} from './orchestrator';
 import type { ExecutiveSummaryContent } from './content/executive-summary';
 import type { ContentHubClient } from './packet/content-hub.client';
 import type { CompanionClient } from '../companion/companion.client';
@@ -23,6 +32,7 @@ function stateRow(overrides: Partial<GenerationState> = {}): GenerationState {
     lastError: null,
     s3KeyPdf: null,
     editAttempts: 0,
+    editInstructions: null,
     version: null,
     waitingSince: null,
     createdAt: '2026-10-01T00:00:00.000Z',
@@ -64,6 +74,11 @@ function setup(row: GenerationState, sessions: ReportPacketSession[] = []) {
       return `reports/9/rep-1/v${version}.pdf`;
     }),
     saveModelReply: jest.fn(),
+    saveManifest: jest.fn().mockImplementation(async () => {
+      calls.push('manifest');
+      return 'reports/9/rep-1/v1.meta.json';
+    }),
+    loadContent: jest.fn().mockResolvedValue(null),
   };
   const notifier = {
     notify: jest.fn().mockImplementation(async () => {
@@ -73,7 +88,9 @@ function setup(row: GenerationState, sessions: ReportPacketSession[] = []) {
   };
   const contentHub = { fetchReportPacket: jest.fn().mockResolvedValue({ campaignId: 9, template: null, sessions }) };
   const templates = {
-    load: jest.fn().mockResolvedValue({ template: { systemPrompt: 'prompt', html: undefined }, note: null }),
+    load: jest
+      .fn()
+      .mockResolvedValue({ template: { systemPrompt: 'prompt', html: undefined, source: 'builtin', semver: null }, note: null }),
   };
   const reportDoc = { renderExecutiveSummary: jest.fn().mockResolvedValue('<html></html>') };
 
@@ -90,7 +107,10 @@ function setup(row: GenerationState, sessions: ReportPacketSession[] = []) {
   );
   const generate = jest
     .spyOn(orchestrator as unknown as { generateContent: (...args: unknown[]) => Promise<unknown> }, 'generateContent')
-    .mockResolvedValue({ title: 'T' });
+    .mockResolvedValue({
+      content: { title: 'T' },
+      generation: { text: '{}', finishReason: 'complete', tokensInput: 1000, tokensOutput: 500, requestId: 'rep-1' },
+    } as unknown as GeneratedReport);
 
   return { orchestrator, state, storage, notifier, generate, queue, calls };
 }
@@ -104,7 +124,84 @@ describe('ReportGenerationOrchestrator', () => {
     expect(storage.uploadReport).toHaveBeenCalledWith('9', 'rep-1', 1, '<html></html>', { title: 'T' });
     expect(state.markComplete).toHaveBeenCalledWith('rep-1', 'reports/9/rep-1/v1.pdf', 1);
     expect(notifier.notify).toHaveBeenCalledWith({ requestId: 'rep-1', campaignId: '9', version: 1 });
-    expect(calls).toEqual(['upload', 'markComplete', 'notify']);
+    expect(calls).toEqual(['upload', 'manifest', 'markComplete', 'notify']);
+  });
+
+  it('writes the run manifest for the version (CPR-50)', async () => {
+    const { orchestrator, storage } = setup(stateRow());
+
+    await orchestrator.handle({ requestId: 'rep-1', campaignId: '9' });
+
+    const [campaignId, reportId, version, manifest] = storage.saveManifest.mock.calls[0] as [
+      string,
+      string,
+      number,
+      RunManifest,
+    ];
+    expect([campaignId, reportId, version]).toEqual(['9', 'rep-1', 1]);
+    expect(manifest).toMatchObject({ reportId: 'rep-1', version: 1, model: { configuredId: testEnv.bedrockModelId } });
+    expect(Object.keys(manifest.timingsMs)).toEqual(['pullingData', 'generating', 'rendering', 'uploading', 'total']);
+  });
+
+  it('still completes the report when the manifest cannot be written', async () => {
+    const { orchestrator, storage, state, notifier } = setup(stateRow());
+    storage.saveManifest.mockRejectedValue(new Error('S3 down'));
+
+    await orchestrator.handle({ requestId: 'rep-1', campaignId: '9' });
+
+    expect(state.markComplete).toHaveBeenCalled();
+    expect(state.markFailed).not.toHaveBeenCalled();
+    expect(notifier.notify).toHaveBeenCalled();
+  });
+
+  describe('Regenerate with edit instructions (CPR-52)', () => {
+    it('revises the previous version with the instructions', async () => {
+      const previous = { narrative: { programTitle: 'HER2-Low' } };
+      const { orchestrator, storage, generate } = setup(
+        stateRow({ editAttempts: 1, editInstructions: '  Shorten the takeaways  ' }),
+      );
+      storage.loadContent.mockResolvedValue(previous);
+
+      await orchestrator.handle({ requestId: 'rep-1', campaignId: '9' });
+
+      expect(storage.loadContent).toHaveBeenCalledWith('9', 'rep-1', 1);
+      expect(generate).toHaveBeenCalledWith(expect.anything(), 'prompt', 'rep-1', 2, {
+        previousVersion: 1,
+        instructions: 'Shorten the takeaways',
+        previous: { programTitle: 'HER2-Low' },
+      });
+    });
+
+    it('applies the instructions to a fresh report when the previous version is missing', async () => {
+      const { orchestrator, generate } = setup(stateRow({ editAttempts: 1, editInstructions: 'Shorter' }));
+
+      await orchestrator.handle({ requestId: 'rep-1', campaignId: '9' });
+
+      expect(generate).toHaveBeenCalledWith(expect.anything(), 'prompt', 'rep-1', 2, {
+        previousVersion: 1,
+        instructions: 'Shorter',
+        previous: null,
+      });
+    });
+
+    it('fails the attempt so the job retries when S3 errors reading the previous version', async () => {
+      const { orchestrator, storage, state, generate } = setup(stateRow({ editAttempts: 1, editInstructions: 'Shorter' }));
+      storage.loadContent.mockRejectedValue(new Error('S3 timeout'));
+
+      await expect(orchestrator.handle({ requestId: 'rep-1', campaignId: '9' })).rejects.toThrow('S3 timeout');
+
+      expect(generate).not.toHaveBeenCalled();
+      expect(state.markFailed).toHaveBeenCalledWith('rep-1', 'S3 timeout');
+    });
+
+    it('writes a fresh report when Regenerate has no instructions', async () => {
+      const { orchestrator, storage, generate } = setup(stateRow({ editAttempts: 1, editInstructions: '   ' }));
+
+      await orchestrator.handle({ requestId: 'rep-1', campaignId: '9' });
+
+      expect(storage.loadContent).not.toHaveBeenCalled();
+      expect(generate).toHaveBeenCalledWith(expect.anything(), 'prompt', 'rep-1', 2, null);
+    });
   });
 
   it('writes the next version after Regenerate (edit_attempts from Platform)', async () => {
@@ -112,7 +209,7 @@ describe('ReportGenerationOrchestrator', () => {
 
     await orchestrator.handle({ requestId: 'rep-1', campaignId: '9' });
 
-    expect(generate).toHaveBeenCalledWith(expect.anything(), 'prompt', 'rep-1', 3);
+    expect(generate).toHaveBeenCalledWith(expect.anything(), 'prompt', 'rep-1', 3, null);
     expect(storage.uploadReport.mock.calls[0][2]).toBe(3);
     expect(state.markComplete).toHaveBeenCalledWith('rep-1', 'reports/9/rep-1/v3.pdf', 3);
     expect(notifier.notify).toHaveBeenCalledWith(expect.objectContaining({ version: 3 }));
@@ -198,21 +295,28 @@ describe('report content from the packet (CPR-46)', () => {
     const companion = {
       generate: jest.fn().mockResolvedValue({ text: narrative, finishReason: 'COMPLETE', tokensInput: 1, tokensOutput: 1 }),
     };
+    const storage = { saveModelReply: jest.fn().mockResolvedValue('reports/9/rep-1/v1.model.txt') };
     const orchestrator = new ReportGenerationOrchestrator(
       {} as unknown as ContentHubClient,
       companion as unknown as CompanionClient,
       {} as unknown as ReportDocService,
-      { saveModelReply: jest.fn() } as unknown as ReportStorageService,
+      storage as unknown as ReportStorageService,
       {} as unknown as ReportReadyNotifier,
       {} as unknown as GenerationStateService,
       {} as unknown as TemplateStore,
       {} as unknown as ReportRequestQueue,
       testEnv,
     );
-    const run = (packet: Partial<ReportInputPacket>) =>
+    const run = (packet: Partial<ReportInputPacket>, revision: Revision | null = null) =>
       (
         orchestrator as unknown as {
-          generateContent: (p: ReportInputPacket, s: string, r: string, v: number) => Promise<ExecutiveSummaryContent>;
+          generateContent: (
+            p: ReportInputPacket,
+            s: string,
+            r: string,
+            v: number,
+            rev: Revision | null,
+          ) => Promise<GeneratedReport>;
         }
       ).generateContent(
         {
@@ -230,9 +334,10 @@ describe('report content from the packet (CPR-46)', () => {
         },
         'prompt',
         'rep-1',
-        1,
-      );
-    return { companion, run };
+        revision ? revision.previousVersion + 1 : 1,
+        revision,
+      ).then((r): ExecutiveSummaryContent => r.content);
+    return { companion, storage, run };
   }
 
   it('uses Hub KOLs over the transcript and gives them to the model', async () => {
@@ -323,5 +428,136 @@ describe('report content from the packet (CPR-46)', () => {
     expect(
       (await run({ sessions: [session({ platformToolProgramId: null, zoomMeetingUuid: null, transcriptText: 'x' })] })).qaNote,
     ).toBeNull();
+  });
+
+  it('puts the previous version and the instructions after the transcripts (CPR-52)', async () => {
+    const { companion, run } = build();
+    const content = await run(
+      { sessions: [session({ transcriptText: 'talk' })] },
+      { previousVersion: 1, instructions: 'Lead with the survey results', previous: { programTitle: 'Old' } as never },
+    );
+
+    const user: string = companion.generate.mock.calls[0][0].userContent;
+    expect(user.indexOf('Transcripts:')).toBeLessThan(user.indexOf('Previous version (v1)'));
+    expect(user).toContain('{"programTitle":"Old"}');
+    expect(user.trimEnd()).toMatch(/Lead with the survey results\n\nRevise the previous version[^\n]*$/);
+    expect(content.revision).toEqual({ previousVersion: 1, instructions: 'Lead with the survey results', previousLoaded: true });
+  });
+
+  it('keeps the instructions when the previous version is missing', async () => {
+    const { companion, run } = build();
+    const content = await run({}, { previousVersion: 2, instructions: 'Shorter', previous: null });
+
+    const user: string = companion.generate.mock.calls[0][0].userContent;
+    expect(user).not.toContain('Previous version');
+    expect(user).toContain("Editor's instructions for this version:\nShorter");
+    expect(content.revision?.previousLoaded).toBe(false);
+  });
+
+  it('leaves out a previous version too long to fit and keeps the instructions (CPR-52)', async () => {
+    const { companion, run } = build();
+    const previous = { programTitle: 'x'.repeat(USER_CONTENT_LIMIT - MIN_TRANSCRIPT_ROOM) } as never;
+    const content = await run({}, { previousVersion: 1, instructions: 'Shorter', previous });
+
+    const user: string = companion.generate.mock.calls[0][0].userContent;
+    expect(user.length).toBeLessThanOrEqual(USER_CONTENT_LIMIT);
+    expect(user).not.toContain('Previous version');
+    expect(user).toContain("Editor's instructions for this version:\nShorter");
+    expect(content.revision?.previousLoaded).toBe(false);
+  });
+
+  it('still returns the report when the model reply cannot be saved', async () => {
+    const { storage, run } = build();
+    storage.saveModelReply.mockRejectedValue(new Error('S3 down'));
+
+    expect((await run({})).title).toBe('Executive Summary: HER2-Low');
+  });
+
+  it('lists every source with counts for the appendix (CPR-50)', async () => {
+    const { run } = build();
+    const content = await run({
+      inputCompleteness: {
+        zoom: { status: 'ok', rowCount: 3, fetchedAt: '2026-10-15T18:00:00Z' },
+        hubspot: { status: 'missing', rowCount: 0, fetchedAt: null },
+      },
+    });
+
+    expect(content.inputs).toEqual([
+      { source: 'zoom', status: 'ok', rowCount: 3, fetchedAt: '2026-10-15T18:00:00Z' },
+      { source: 'hubspot', status: 'missing', rowCount: 0, fetchedAt: null },
+    ]);
+    expect(content.inputCompletenessNote).toBeNull();
+    expect(content.revision).toBeNull();
+  });
+});
+
+describe('buildManifest (CPR-50)', () => {
+  it('records the template, model, inputs, revision and timings of a run', () => {
+    const manifest = buildManifest({
+      state: stateRow({ sources: ['zoom'], windowStart: '2026-10-15', editAttempts: 1 }),
+      version: 2,
+      attempt: 1,
+      completedAt: '2026-10-15T19:00:00.000Z',
+      templateType: 'executive_summary',
+      template: { systemPrompt: 'prompt', semver: '1.2.0', source: 's3' },
+      configuredModelId: 'us.anthropic.claude-sonnet-5',
+      content: {
+        inputs: [{ source: 'zoom', status: 'ok', rowCount: 2, fetchedAt: '2026-10-15T18:00:00Z' }],
+        revision: { previousVersion: 1, instructions: 'Shorter', previousLoaded: true },
+      } as ExecutiveSummaryContent,
+      generation: { text: '{}', finishReason: 'complete', tokensInput: 1000, tokensOutput: 500, requestId: 'rep-1' },
+      timingsMs: { pullingData: 10, generating: 200 },
+    });
+
+    expect(manifest).toEqual({
+      reportId: 'rep-1',
+      campaignId: '9',
+      version: 2,
+      attempt: 1,
+      completedAt: '2026-10-15T19:00:00.000Z',
+      template: {
+        type: 'executive_summary',
+        semver: '1.2.0',
+        source: 's3',
+        systemPromptSha256: 'cf07194ee232eb531e15f690000d19846dea69cf05504782658afcfacb9228a2',
+      },
+      model: {
+        configuredId: 'us.anthropic.claude-sonnet-5',
+        finishReason: 'complete',
+        tokensInput: 1000,
+        tokensOutput: 500,
+        estimatedCostUsd: 0.007,
+      },
+      window: { start: '2026-10-15', end: null },
+      sources: ['zoom'],
+      inputs: [{ source: 'zoom', status: 'ok', rowCount: 2, fetchedAt: '2026-10-15T18:00:00Z' }],
+      revision: { previousVersion: 1, instructions: 'Shorter', previousLoaded: true },
+      timingsMs: { pullingData: 10, generating: 200, total: 210 },
+    });
+  });
+
+  it('leaves usage and cost null when companion did not report tokens', () => {
+    const manifest = buildManifest({
+      state: stateRow(),
+      version: 1,
+      attempt: 0,
+      completedAt: '2026-10-15T19:00:00.000Z',
+      templateType: null,
+      template: { systemPrompt: 'prompt', semver: null, source: 'builtin' },
+      configuredModelId: 'm',
+      content: {} as ExecutiveSummaryContent,
+      generation: { text: '{}', finishReason: 'complete' },
+      timingsMs: {},
+    });
+
+    expect(manifest.model).toEqual({
+      configuredId: 'm',
+      finishReason: 'complete',
+      tokensInput: null,
+      tokensOutput: null,
+      estimatedCostUsd: null,
+    });
+    expect(manifest.inputs).toEqual([]);
+    expect(manifest.revision).toBeNull();
   });
 });

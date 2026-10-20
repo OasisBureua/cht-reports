@@ -44,6 +44,7 @@ const content: ExecutiveSummaryContent = {
   kols: narrative.kols,
   kolSource: 'transcript',
   attendees: null,
+  // Content stored before CPR-50 carries this note; new content lists sources in `inputs`.
   inputCompletenessNote: 'The following sources were unavailable: hubspot: missing.',
 };
 
@@ -109,6 +110,36 @@ describe('ReportDocService', () => {
     expect(html).toContain('hubspot: missing');
     expect(html).toContain('Not included for lack of input data: Attendees, Summary of Conversation, Question Summaries.');
     expect(BUILTIN_HTML_TEMPLATE).toMatch(/@media print \{.*\.internal-notes \{ display: none; \}/);
+  });
+
+  it('lists every source with row counts and fetch times internally (CPR-50)', async () => {
+    const html = await service.renderExecutiveSummary({
+      ...content,
+      inputs: [
+        { source: 'zoom', status: 'ok', rowCount: 3, fetchedAt: '2026-10-15T18:04:59.123Z' },
+        { source: 'hubspot', status: 'missing', rowCount: 0, fetchedAt: null },
+      ],
+    });
+    const notes = html.slice(html.indexOf('internal-notes'));
+    expect(notes).toContain('<th style="text-align:left;padding:2px 16px 2px 0">Fetched (UTC)</th>');
+    expect(notes).toMatch(/<td[^>]*>zoom<\/td><td[^>]*>ok<\/td><td[^>]*>3<\/td><td[^>]*>2026-10-15 18:04<\/td>/);
+    expect(notes).toMatch(/<td[^>]*>hubspot<\/td><td[^>]*>missing<\/td><td[^>]*>0<\/td><td[^>]*>never<\/td>/);
+  });
+
+  it('notes the edit instructions a revised version followed (CPR-52)', async () => {
+    const html = await service.renderExecutiveSummary({
+      ...content,
+      revision: { previousVersion: 1, instructions: 'Lead with <survey> results', previousLoaded: true },
+    });
+    expect(html.slice(html.indexOf('internal-notes'))).toContain(
+      'Version 2, revised with these instructions: &quot;Lead with &lt;survey&gt; results&quot;.',
+    );
+
+    const fresh = await service.renderExecutiveSummary({
+      ...content,
+      revision: { previousVersion: 1, instructions: 'Shorter', previousLoaded: false },
+    });
+    expect(fresh).toContain('(v1 could not be included, so it was written fresh).');
   });
 
   it('notes machine transcripts and recording-sourced KOLs internally', async () => {

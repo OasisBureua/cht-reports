@@ -24,6 +24,7 @@ import type {
   Claim,
   CountRow,
   ExecutiveSummaryContent,
+  InputSourceSummary,
   Point,
   SurveyChart,
 } from '../content/executive-summary';
@@ -125,6 +126,11 @@ export class ReportDocService {
     const missing = omitted.filter((id) => !(qaPending && QA_SECTIONS.includes(id))).map((id) => SECTION_TITLES[id]);
 
     const notes = [
+      content.revision
+        ? `Version ${content.revision.previousVersion + 1}, revised with these instructions: "${content.revision.instructions}"${
+            content.revision.previousLoaded ? '' : ` (v${content.revision.previousVersion} could not be included, so it was written fresh)`
+          }.`
+        : null,
       content.transcriptNote ?? null,
       content.kols.length && content.kolSource === 'transcript' ? TRANSCRIPT_KOLS_NOTE : null,
       content.inputCompletenessNote,
@@ -132,15 +138,18 @@ export class ReportDocService {
       missing.length > 0 ? `Not included for lack of input data: ${missing.join(', ')}.` : null,
     ].filter((n): n is string => Boolean(n));
 
-    const inputCompleteness = notes.length
-      ? [
-          '<section class="internal-notes">',
-          '<h2>Input Completeness</h2>',
-          '<p class="internal-label">Internal: shown in the HTML preview, left out of the PDF.</p>',
-          notes.map((n) => `<p>${esc(n)}</p>`).join('\n'),
-          '</section>',
-        ].join('\n')
-      : '';
+    const inputs = content.inputs ?? [];
+    const inputCompleteness =
+      notes.length || inputs.length
+        ? [
+            '<section class="internal-notes">',
+            '<h2>Input Completeness</h2>',
+            '<p class="internal-label">Internal: shown in the HTML preview, left out of the PDF.</p>',
+            notes.map((n) => `<p>${esc(n)}</p>`).join('\n'),
+            inputs.length ? inputsTable(inputs) : '',
+            '</section>',
+          ].join('\n')
+        : '';
 
     return fill(options.htmlTemplate ?? BUILTIN_HTML_TEMPLATE, {
       title: esc(content.title),
@@ -151,6 +160,34 @@ export class ReportDocService {
       inputCompleteness,
     });
   }
+}
+
+/**
+ * CPR-50: each source's row count and fetch time. Styled inline so templates
+ * already in S3 show it without a CSS change.
+ */
+export function inputsTable(inputs: InputSourceSummary[]): string {
+  const cell = 'style="text-align:left;padding:2px 16px 2px 0"';
+  const rows = inputs
+    .map(
+      (i) =>
+        `<tr><td ${cell}>${esc(i.source)}</td><td ${cell}>${esc(i.status)}</td><td ${cell}>${i.rowCount}</td><td ${cell}>${esc(
+          fetchedLabel(i.fetchedAt),
+        )}</td></tr>`,
+    )
+    .join('');
+  return [
+    '<table class="internal-inputs" style="border-collapse:collapse;margin-top:8px;font-size:14px">',
+    `<thead><tr><th ${cell}>Source</th><th ${cell}>Status</th><th ${cell}>Rows</th><th ${cell}>Fetched (UTC)</th></tr></thead>`,
+    `<tbody>${rows}</tbody>`,
+    '</table>',
+  ].join('');
+}
+
+function fetchedLabel(fetchedAt: string | null): string {
+  if (!fetchedAt) return 'never';
+  const d = new Date(fetchedAt);
+  return Number.isNaN(d.getTime()) ? fetchedAt : d.toISOString().slice(0, 16).replace('T', ' ');
 }
 
 function wording(content: ExecutiveSummaryContent): Wording {

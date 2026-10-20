@@ -159,7 +159,26 @@ export interface ExecutiveSummaryContent {
   qaNote?: string | null;
   /** Set when the report used transcripts (CPR-47): they are machine-generated. */
   transcriptNote?: string | null;
+  /** Older versions only: new content lists every source in `inputs` instead. */
   inputCompletenessNote: string | null;
+  /** Every packet source with its row count and fetch time, for the internal appendix (CPR-50). */
+  inputs?: InputSourceSummary[];
+  /** Set when a Regenerate came with edit instructions (CPR-52). */
+  revision?: RevisionSummary | null;
+}
+
+export interface InputSourceSummary {
+  source: string;
+  status: 'ok' | 'missing' | 'error';
+  rowCount: number;
+  fetchedAt: string | null;
+}
+
+export interface RevisionSummary {
+  previousVersion: number;
+  instructions: string;
+  /** False when the previous version's content wasn't found or didn't fit, so the report was written fresh. */
+  previousLoaded: boolean;
 }
 
 export class NarrativeParseError extends Error {}
