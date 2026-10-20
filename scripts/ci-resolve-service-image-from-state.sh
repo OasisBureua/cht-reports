@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Resolve currently applied Lambda image URIs from Terraform state.
+# Resolve the report worker image currently applied, from Terraform state, so
+# an infra-only plan keeps it instead of rolling back to the tfvars placeholder.
 # Usage (from TF env dir, after terraform init):
-#   eval "$(../../../../scripts/ci-resolve-lambda-images-from-state.sh)"
+#   eval "$(../../../../scripts/ci-resolve-service-image-from-state.sh)"
 set -euo pipefail
 
 if ! command -v jq >/dev/null 2>&1; then
@@ -16,20 +17,6 @@ fi
 
 STATE_JSON="$(terraform show -json)"
 
-GENERATOR_IMAGE="$(echo "$STATE_JSON" | jq -r '
-  [
-    ..
-    | objects
-    | select(
-        (.type? == "aws_lambda_function")
-        and ((.address? // .name? // "") | tostring | contains("generator"))
-      )
-    | .values.image_uri
-  ]
-  | map(select(type == "string" and length > 0))
-  | first // empty
-')"
-
 REPORTS_SERVICE_IMAGE="$(echo "$STATE_JSON" | jq -r '
   [
     ..
@@ -42,21 +29,13 @@ REPORTS_SERVICE_IMAGE="$(echo "$STATE_JSON" | jq -r '
   | if . == "" then empty else (fromjson | .[0].image // empty) end
 ')"
 
-if [ -z "${GENERATOR_IMAGE:-}" ]; then
-  echo "Could not resolve generator image from Terraform state." >&2
-  echo "Refusing infra-only plan that would risk rolling images back to tfvars placeholders." >&2
-  exit 1
-fi
-
 if [ -z "${REPORTS_SERVICE_IMAGE:-}" ]; then
   echo "Could not resolve reports ECS image from Terraform state." >&2
   echo "Refusing infra-only plan that would risk rolling the worker back to tfvars placeholders." >&2
   exit 1
 fi
 
-echo "Resolved current images from state:" >&2
-echo "  generator: ${GENERATOR_IMAGE}" >&2
-echo "  reports:   ${REPORTS_SERVICE_IMAGE}" >&2
+echo "Resolved current image from state:" >&2
+echo "  reports: ${REPORTS_SERVICE_IMAGE}" >&2
 
-printf "GENERATOR_IMAGE=%q\n" "$GENERATOR_IMAGE"
 printf "REPORTS_SERVICE_IMAGE=%q\n" "$REPORTS_SERVICE_IMAGE"

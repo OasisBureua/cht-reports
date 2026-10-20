@@ -2,5 +2,4 @@
 exec "$(dirname "$0")/next-image-tag.sh" \
   "${1:-cht-reports-prod-service}" \
   "${2:-us-east-1}" \
-  "v" \
-  "${3:-cht-reports-prod-generator}"
+  "v"

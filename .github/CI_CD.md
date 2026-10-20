@@ -1,18 +1,17 @@
 # CI/CD
 
 Same workflow set as cht-platform-tool. This repo has **no frontend**. Lanes are
-backend, optional containerized lambdas, and infra.
+backend and infra.
 
 ## Workflows
 
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
-| `pr-validation.yml` | Pull requests | Backend tests/build, lambda tests, Terraform validate |
+| `pr-validation.yml` | Pull requests | Backend tests/build, Terraform validate |
 | `branch-policy.yml` | PRs → `main` | Require head branch `release/*` or `hotfix/*` |
-| `security-monthly.yml` | First Monday monthly | npm audit, pip/Trivy filesystem scan |
-| `deploy-dev.yml` | Push to `develop` or `feature/**`, or manual (`workflow_dispatch`) | Images → `cht-reports-dev-*` ECR, Terraform apply dev |
-| `deploy-prod.yml` | Manual (`workflow_dispatch`) | Images → `cht-reports-prod-*` ECR, Terraform apply production |
-| `rollback.yml` | Manual | Roll back Lambda `live` alias (ECS rollback when that module exists) |
+| `security-monthly.yml` | First Monday monthly | npm audit, Trivy filesystem scan |
+| `deploy-dev.yml` | Push to `develop` or `feature/**`, or manual (`workflow_dispatch`) | Image → `cht-reports-dev-service` ECR, Terraform apply dev, wait for the worker. Manual `image_tag` rolls back to an existing image instead |
+| `deploy-prod.yml` | Manual (`workflow_dispatch`) | Image → `cht-reports-prod-service` ECR, Terraform apply production, wait for the worker. Manual `image_tag` (from `main`) rolls back to an existing image instead |
 
 Docs-only changes under `docs/**` do not trigger deploy.
 
@@ -21,10 +20,12 @@ Docs-only changes under `docs/**` do not trigger deploy.
 | Lane | Paths | What runs |
 |------|--------|-----------|
 | Backend | `backend/**` | Tests + image build/push (`cht-reports-dev-service` / `cht-reports-prod-service`) + Terraform plan/apply (rolls the ECS service to the new image) |
-| Lambda | `lambdas/**` | Tests + image build/push + Terraform image pin |
 | Infra | `infrastructure/**` | Terraform plan/apply |
 
-Manual **Run workflow** has `deploy_all` (default off) to force every lane.
+Manual **Run workflow** has `deploy_all` (default off) to force every lane, and
+`image_tag` (default empty) to roll back: it skips change detection, tests and
+the build, checks the tag exists in ECR, and plans/applies Terraform with that
+image (same approval). Production rollbacks must run from `main`.
 
 ## Terraform apply approval
 

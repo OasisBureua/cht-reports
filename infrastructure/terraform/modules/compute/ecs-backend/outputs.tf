@@ -14,3 +14,7 @@ output "service_connect_dns_name" {
   description = "How other services on the shared namespace reach cht-reports, e.g. http://cht-reports:3000."
   value       = local.service_dns_name
 }
+
+output "log_group_name" {
+  value = aws_cloudwatch_log_group.reports.name
+}

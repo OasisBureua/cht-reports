@@ -41,17 +41,6 @@ jobs:
         working-directory: ./backend
         run: npm test
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Lambda - Install and test
-        working-directory: ./lambdas/generator
-        run: |
-          pip install -r requirements.txt -r requirements-dev.txt
-          pytest
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v4
         with:

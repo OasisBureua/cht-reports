@@ -28,19 +28,18 @@ cht-platform-tool POST /api/internal/reports/{id}/ready ──► SES email (CPR
 - **Reports M2M**: Cognito app client `cht-reports-m2m-{env}` + SM `cht-{env}-cognito-m2m-reports` (imported; Hub owns the `hub` RS)
 
 ### Compute
-- **ECR**: one repository per Lambda
-- **Lambda container**: Image-based functions + `live` alias
+- **ECR**: the worker image repository (created by the deploy workflow, looked up here)
+- **ECS**: the report worker service on the shared platform cluster
 
 ### Storage
 - **S3 reports**: generated artifacts
 
 ### Messaging
 - **SQS**: generate jobs with DLQ
-- **EventBridge**: scheduled invoke of `live`
 - **SNS**: alarm notifications
 
 ### Monitoring
-- **CloudWatch**: Lambda error/throttle alarms
+- **CloudWatch**: report failure rate, DLQ depth and worker-not-running alarms (CPR-53)
 
 ## Prerequisites
 
@@ -93,6 +92,7 @@ Always `-reconfigure` when switching between production and dev in the same dire
 - Workflows use **OIDC** (`AWS_ROLE_ARN`), not long-lived access keys.
 - Separate roles: `GitHubActions-CHT-Reports-Dev` and `GitHubActions-CHT-Reports-Prod`.
 - Scoped policies: `iam/github-actions-deploy-policy-dev.json` and `iam/github-actions-deploy-policy-prod.json`.
+- They still grant `lambda:*` and `events:*` so Terraform can destroy the old generator Lambda and its EventBridge rule (CPR-53). Removing them is a follow-up, applied only after both the dev and production applies have destroyed the Lambda.
 - Never commit `.env`, `production.tfvars`, or `dev.tfvars`.
 
 ## Support

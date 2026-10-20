@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Mirrors .github/workflows/pr-validation.yml
-# Usage: ./scripts/verify.sh [all|backend|lambda|infra]
+# Usage: ./scripts/verify.sh [all|backend|infra]
 set -e
 
 TARGET="${1:-all}"
@@ -25,13 +25,6 @@ if [ "$TARGET" = "all" ] || [ "$TARGET" = "backend" ]; then
     else
       echo "→ backend: skip (run npm install first)"
     fi
-  fi
-fi
-
-if [ "$TARGET" = "all" ] || [ "$TARGET" = "lambda" ]; then
-  if [ -d "$REPO_ROOT/lambdas/generator" ]; then
-    cd "$REPO_ROOT/lambdas/generator"
-    run_step "lambda: pytest" python3 -m pytest tests
   fi
 fi
 

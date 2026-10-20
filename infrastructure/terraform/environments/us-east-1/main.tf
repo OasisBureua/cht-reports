@@ -52,7 +52,6 @@ locals {
   resource_prefix    = "${var.project}-${local.env_short}"
   log_retention_days = contains(["prod", "production"], var.environment) ? 365 : 7
   ecr_repository_names = [
-    "cht-reports-${local.env_short}-generator",
     "cht-reports-${local.env_short}-service",
   ]
 }
@@ -112,7 +111,7 @@ module "sns_alerts" {
 }
 
 # On-demand report requests. cht-platform-tool's generate BFF posts
-# { reportId } here; the ECS service (not the Lambda) consumes it.
+# { reportId } here; the ECS service consumes it.
 module "sqs_report_requests" {
   source = "../../modules/messaging/sqs"
 
@@ -154,62 +153,6 @@ module "secrets" {
     CONTENTHUB_API_KEY    = var.contenthub_api_key
     PLATFORM_TOOL_API_KEY = var.platform_tool_api_key
   }
-}
-
-# ============================================
-# Lambdas (container images)
-# ============================================
-module "lambda" {
-  source   = "../../modules/compute/lambda-container"
-  for_each = var.lambda_images
-
-  resource_prefix        = local.resource_prefix
-  name                   = each.key
-  environment            = var.environment
-  image_uri              = each.value
-  timeout                = var.lambda_timeout
-  memory_size            = var.lambda_memory_size
-  log_retention_days     = local.log_retention_days
-  cloudwatch_kms_key_arn = module.kms.cloudwatch_kms_key_arn
-  s3_bucket_arn          = module.s3_reports.bucket_arn
-  secrets_arn            = module.secrets.secret_arn
-  kms_key_arns = [
-    module.kms.s3_kms_key_arn,
-    module.kms.sqs_kms_key_arn,
-    module.kms.secrets_kms_key_arn,
-  ]
-  environment_variables = {
-    ENVIRONMENT         = var.environment
-    REPORTS_BUCKET      = module.s3_reports.bucket_id
-    SECRETS_ARN         = module.secrets.secret_arn
-    CONTENTHUB_BASE_URL = var.contenthub_base_url
-  }
-}
-
-# ============================================
-# EventBridge schedule → generator:live
-# ============================================
-module "generate_schedule" {
-  source = "../../modules/messaging/eventbridge-lambda"
-
-  resource_prefix      = local.resource_prefix
-  environment          = var.environment
-  schedule_expression  = var.generate_schedule_expression
-  lambda_alias_arn     = module.lambda["generator"].live_alias_arn
-  lambda_function_name = module.lambda["generator"].function_name
-  enabled              = var.enable_generate_schedule
-}
-
-# ============================================
-# Monitoring
-# ============================================
-module "cloudwatch" {
-  source = "../../modules/monitoring/cloudwatch"
-
-  resource_prefix      = local.resource_prefix
-  environment          = var.environment
-  lambda_function_name = module.lambda["generator"].function_name
-  sns_topic_arn        = module.sns_alerts.topic_arn
 }
 
 # ============================================
@@ -375,4 +318,20 @@ module "ecs_backend" {
     },
     local.contenthub_m2m_task_secrets,
   )
+}
+
+# ============================================
+# Monitoring (CPR-53): alarms on the report worker
+# ============================================
+module "cloudwatch" {
+  source = "../../modules/monitoring/cloudwatch"
+
+  resource_prefix = local.resource_prefix
+  environment     = var.environment
+  sns_topic_arn   = module.sns_alerts.topic_arn
+
+  log_group_name = module.ecs_backend.log_group_name
+  cluster_name   = var.platform_cluster_name
+  service_name   = module.ecs_backend.service_name
+  dlq_name       = module.sqs_report_requests.dlq_name
 }

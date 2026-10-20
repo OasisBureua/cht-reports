@@ -1,11 +1,5 @@
 # Dependencies
 node_modules/
-__pycache__/
-*.pyc
-.Python
-venv/
-.venv/
-env/
 
 # Environment variables
 .env
@@ -38,9 +32,6 @@ infrastructure/terraform/environments/variables/*.local.tfvars
 
 # Testing
 coverage/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
 
 # Misc
 *.bak

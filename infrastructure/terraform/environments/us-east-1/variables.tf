@@ -8,35 +8,6 @@ variable "environment" {
   type        = string
 }
 
-variable "lambda_images" {
-  description = "Map of short Lambda name to ECR image URI (including tag)."
-  type        = map(string)
-}
-
-variable "lambda_timeout" {
-  description = "Generator timeout in seconds"
-  type        = number
-  default     = 300
-}
-
-variable "lambda_memory_size" {
-  description = "Generator memory in MB"
-  type        = number
-  default     = 1024
-}
-
-variable "generate_schedule_expression" {
-  description = "EventBridge schedule for report generation"
-  type        = string
-  default     = "cron(0 6 * * ? *)"
-}
-
-variable "enable_generate_schedule" {
-  description = "Enable the EventBridge generate rule. Off: the ECS service generates reports on demand (CPR-34)."
-  type        = bool
-  default     = false
-}
-
 # Origin or /api/public URL. The Nest worker rewrites to /api/admin for
 # GET .../campaigns/{id}/report-packet.
 variable "contenthub_base_url" {
@@ -123,7 +94,7 @@ variable "reports_service_image_uri" {
 }
 
 variable "report_request_visibility_timeout_seconds" {
-  description = "Visibility timeout for the on-demand report-requests queue. Must exceed the longest expected generation time, not the Lambda timeout."
+  description = "Visibility timeout for the on-demand report-requests queue. Must exceed the longest expected generation time."
   type        = number
   default     = 900
 }

@@ -6,17 +6,6 @@
 project     = "cht-reports"
 environment = "production"
 
-# Images overridden per deploy by workflow (-var 'lambda_images={...}')
-lambda_images = {
-  generator = "233636046512.dkr.ecr.us-east-1.amazonaws.com/cht-reports-prod-generator:v1.0.0"
-}
-
-lambda_timeout     = 300
-lambda_memory_size = 1024
-
-generate_schedule_expression = "cron(0 6 * * ? *)"
-enable_generate_schedule     = false
-
 contenthub_base_url = "https://contenthub.communityhealth.media/api/public"
 
 # cht-platform-tool export contract (CPR-13/14), used by the ECS orchestration
