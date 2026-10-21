@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { PutObjectCommand } from '@aws-sdk/client-s3';
+import { GetObjectCommand, NoSuchKey, PutObjectCommand } from '@aws-sdk/client-s3';
 import type { AppEnv } from '../../config/env';
 import { APP_ENV } from '../../config/config.module';
 import { AwsClients } from '../../aws/aws-clients';
@@ -74,5 +74,39 @@ export class ReportStorageService {
       new PutObjectCommand({ Bucket: this.env.reportsBucket, Key: key, Body: text, ContentType: 'text/plain; charset=utf-8' }),
     );
     return key;
+  }
+
+  /**
+   * Run manifest (CPR-50): template, model, tokens, inputs and timings for
+   * this version. Internal, like the model reply.
+   */
+  async saveManifest(campaignId: string, requestId: string, version: number, manifest: unknown): Promise<string> {
+    const key = `${versionPrefix(campaignId, requestId, version)}.meta.json`;
+    await this.aws.s3.send(
+      new PutObjectCommand({
+        Bucket: this.env.reportsBucket,
+        Key: key,
+        Body: JSON.stringify(manifest, null, 2),
+        ContentType: 'application/json',
+      }),
+    );
+    return key;
+  }
+
+  /**
+   * The content JSON an earlier version was rendered from; null when it isn't
+   * there. Without s3:ListBucket a missing key comes back as AccessDenied.
+   */
+  async loadContent(campaignId: string, requestId: string, version: number): Promise<unknown> {
+    const key = `${versionPrefix(campaignId, requestId, version)}.json`;
+    try {
+      const result = await this.aws.s3.send(new GetObjectCommand({ Bucket: this.env.reportsBucket, Key: key }));
+      const text = await result.Body?.transformToString();
+      return text ? JSON.parse(text) : null;
+    } catch (err) {
+      const name = (err as { name?: string })?.name;
+      if (err instanceof NoSuchKey || name === 'NoSuchKey' || name === 'AccessDenied') return null;
+      throw err;
+    }
   }
 }

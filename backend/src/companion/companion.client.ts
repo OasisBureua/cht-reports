@@ -67,7 +67,7 @@ export class CompanionClient {
     if (!response.ok) {
       const errBody = (await response.json().catch(() => null)) as CompanionErrorResponse | null;
       const message = errBody?.error?.message ?? `HTTP ${response.status}`;
-      this.logger.error(`companion /generate failed (${response.status}): ${message}`);
+      this.logger.error(`companion /generate failed (${response.status}) requestId=${request.requestId ?? '?'}: ${message}`);
       throw new CompanionGenerationError(`companion /generate returned ${response.status}: ${message}`);
     }
 

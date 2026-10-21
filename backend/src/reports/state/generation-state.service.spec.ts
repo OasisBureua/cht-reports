@@ -25,6 +25,18 @@ describe('GenerationStateService', () => {
     expect(state?.status).toBe('WAITING_FOR_TRANSCRIPT');
   });
 
+  it("reads Platform's edit instructions from the row (CPR-52)", async () => {
+    ddbMock.on(QueryCommand).resolves({
+      Items: [{ campaign_id: '9', report_id: 'req-1', attempt_count: 0, status: 'QUEUED', edit_attempts: 1, edit_instructions: 'Shorter' }],
+    });
+    expect((await service().get('req-1'))?.editInstructions).toBe('Shorter');
+
+    ddbMock.on(QueryCommand).resolves({
+      Items: [{ campaign_id: '9', report_id: 'req-1', attempt_count: 0, status: 'QUEUED', edit_instructions: null }],
+    });
+    expect((await service().get('req-1'))?.editInstructions).toBeNull();
+  });
+
   it('initializes state with attempt_count 0', async () => {
     ddbMock.on(PutCommand).resolves({});
     const state = await service().initialize('req-1', '9');

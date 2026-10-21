@@ -138,6 +138,16 @@ describe('fitToLimit', () => {
     expect(out.startsWith('HEAD\n\n')).toBe(true);
     expect(out).toContain('[Transcript truncated to fit the input limit.]');
   });
+
+  it('keeps the tail blocks whole after the transcripts and trims the transcripts instead', () => {
+    const out = fitToLimit(['HEAD'], 'x'.repeat(500), 160, ['INSTRUCTIONS']);
+    expect(out.length).toBeLessThanOrEqual(160);
+    expect(out.endsWith('[Transcript truncated to fit the input limit.]\n\nINSTRUCTIONS')).toBe(true);
+  });
+
+  it('never returns more than the limit, even when the other blocks alone exceed it', () => {
+    expect(fitToLimit(['H'.repeat(100)], 'x'.repeat(500), 80, ['T'.repeat(50)])).toHaveLength(80);
+  });
 });
 
 describe('estimateCostUsd', () => {
