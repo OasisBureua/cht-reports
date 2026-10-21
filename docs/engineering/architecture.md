@@ -118,8 +118,23 @@ See:
 
 - ECS Fargate joins the shared platform cluster / Service Connect namespace (`cht-reports`).
 - Scale on SQS backlog, hard max on task count.
-- Lambda `generator` is an unused scaffold (it does not generate or notify). Removal touches CI, alarms and rollback, so it is tracked separately.
-- EventBridge scheduled generate is off unless explicitly enabled.
+- No Lambda: the unused `generator` scaffold and its EventBridge schedule were removed (CPR-53).
+
+## Alarms (CPR-53)
+
+All go to the `cht-reports-{env}-alerts` SNS topic (prod emails are in
+`production.github.tfvars`; dev has none), on alarm and on recovery:
+
+- `report-failure-rate`: more than 5% of attempts failed in an hour. Counted
+  from the worker's `Request … complete: reports/…` and `Request … failed:` /
+  `gave up waiting for transcript` log lines by metric filters
+  (`CHTReports/{env}` namespace). It counts attempts, not reports: every
+  retry counts, so one transient failure followed by a successful retry reads
+  as 50% for that hour and fires the alarm.
+- `report-dlq-depth`: any message in the report requests DLQ.
+- `worker-not-running`: no ECS service CPU samples for 10 minutes, i.e. no
+  task running. In dev this fires overnight while the lightswitch has the
+  service scaled to 0.
 
 ## Environments
 

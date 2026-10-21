@@ -8,26 +8,6 @@ output "ecr_repository_urls" {
   value       = module.ecr.repository_urls
 }
 
-output "lambda_function_names" {
-  description = "Lambda function names keyed by short name"
-  value       = { for k, m in module.lambda : k => m.function_name }
-}
-
-output "lambda_live_alias_arns" {
-  description = "Live alias ARNs keyed by short name"
-  value       = { for k, m in module.lambda : k => m.live_alias_arn }
-}
-
-output "lambda_image_uris" {
-  description = "Currently applied image URIs keyed by short name"
-  value       = { for k, m in module.lambda : k => m.image_uri }
-}
-
-output "lambda_versions" {
-  description = "Published versions keyed by short name"
-  value       = { for k, m in module.lambda : k => m.version }
-}
-
 output "reports_bucket" {
   description = "S3 bucket for report artifacts"
   value       = module.s3_reports.bucket_id
@@ -41,11 +21,6 @@ output "alerts_topic_arn" {
 output "app_secrets_arn" {
   description = "Secrets Manager ARN"
   value       = module.secrets.secret_arn
-}
-
-output "generate_schedule_rule" {
-  description = "EventBridge generate rule name"
-  value       = module.generate_schedule.rule_name
 }
 
 # What cht-platform-tool's generate BFF (CPR-30) needs.

@@ -3,13 +3,12 @@
 # Dev: 1.0.0 …  Platform: v1.0.0 …
 #
 # Usage:
-#   ./scripts/next-image-tag.sh [ECR_REPO] [AWS_REGION] [PREFIX] [LAMBDA_FUNCTION]
+#   ./scripts/next-image-tag.sh [ECR_REPO] [AWS_REGION] [PREFIX]
 set -euo pipefail
 
 REPO="${1:-cht-reports-backend}"
 REGION="${2:-us-east-1}"
 PREFIX="${3:-}"
-LAMBDA_FUNCTION="${4:-}"
 
 if ! command -v aws >/dev/null 2>&1; then
   echo "::error::aws CLI required" >&2
@@ -25,13 +24,6 @@ else
   TAG_PATTERN='^[0-9]+\.[0-9]+\.[0-9]+$'
 fi
 
-collect_semver_tag() {
-  local tag="$1"
-  if [[ "$tag" =~ $TAG_PATTERN ]]; then
-    echo "$tag" >> "$TAGS_FILE"
-  fi
-}
-
 aws ecr describe-images \
   --repository-name "$REPO" \
   --region "$REGION" \
@@ -39,17 +31,6 @@ aws ecr describe-images \
   --output text 2>/dev/null \
 | tr '\t' '\n' \
 | grep -E "$TAG_PATTERN" >> "$TAGS_FILE" || true
-
-if [ -n "$LAMBDA_FUNCTION" ]; then
-  DEPLOYED_IMAGE="$(aws lambda get-function \
-    --function-name "$LAMBDA_FUNCTION" \
-    --region "$REGION" \
-    --query 'Code.ImageUri' \
-    --output text 2>/dev/null || true)"
-  if [ -n "$DEPLOYED_IMAGE" ] && [ "$DEPLOYED_IMAGE" != "None" ]; then
-    collect_semver_tag "${DEPLOYED_IMAGE##*:}"
-  fi
-fi
 
 if [ ! -s "$TAGS_FILE" ]; then
   echo "${PREFIX}1.0.0"

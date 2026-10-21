@@ -6,12 +6,10 @@ Implemented now:
 modules/
 ├── compute/ecr/
 ├── compute/ecr-lifecycle/
-├── compute/lambda-container/
 ├── security/kms/
 ├── security/secrets-manager/
 ├── storage/s3-reports/
 ├── messaging/sqs/
-├── messaging/eventbridge-lambda/
 ├── messaging/sns-alerts/
 └── monitoring/cloudwatch/
 ```

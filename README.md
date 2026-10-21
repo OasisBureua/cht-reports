@@ -1,14 +1,13 @@
 # CHT Reports
 
-Backend + optional containerized Lambdas + Terraform. No frontend.
+Report worker (NestJS on ECS) + Terraform. No frontend.
 
-Folders are in place; NestJS feature modules and remaining Terraform modules
-(ECS, VPC, ALB) get added as the app is built. README will be expanded later.
+The worker consumes SQS report requests and runs as an ECS service on the
+shared platform cluster (no VPC or ALB of its own). See [docs/](docs/).
 
 ```
 cht-reports/
 ├── backend/          # NestJS API
-├── lambdas/          # Containerized Lambdas (optional)
 ├── infrastructure/   # Terraform + GitHub OIDC
 ├── docs/
 └── scripts/

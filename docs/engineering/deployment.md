@@ -22,13 +22,14 @@ Same lane model as cht-platform-tool, without a frontend:
 
 | Lane | Paths | What runs |
 |------|--------|-----------|
-| Backend | `backend/**` | Tests + image build/push |
-| Lambda | `lambdas/**` | Tests, image build/push, Terraform pins `lambda_images` |
-| Infra | `infrastructure/**` | Terraform plan/apply (existing image tags from state) |
+| Backend | `backend/**` | Tests + image build/push + Terraform plan/apply (moves the ECS service to the new image), then waits for the worker |
+| Infra | `infrastructure/**` | Terraform plan/apply (keeps the image from state), then waits for the worker |
 
 ### Dev
 
-Manual only: Actions → **Deploy to Development** → Run workflow.
+A push to `develop` or `feature/**` that touches `backend/**`,
+`infrastructure/**`, `scripts/**` or `.github/workflows/**` deploys dev. Also
+manual: Actions → **Deploy to Development** → Run workflow.
 
 ### Production
 
@@ -52,9 +53,19 @@ Manual only: Actions → **Deploy to Production** → Run workflow.
 
 ## Rollback
 
-Actions → **Rollback Deployment** → `production` or `development` + Lambda version.
+Run **Deploy to Development** or **Deploy to Production** with `image_tag` set
+to an existing worker image tag (`1.0.31` in dev, `v1.0.12` in production).
+The run skips change detection, tests and the image build, checks the tag
+exists in ECR, plans Terraform with that image, waits for **approve** on the
+issue it opens, applies, then waits for the worker. Production rollbacks must
+run from `main`. Terraform state keeps the rolled-back image, so infra-only
+deploys keep it too; the next backend deploy moves forward again.
 
-## Post-deploy smoke
+## Post-deploy check
+
+Deploys and rollbacks wait for the ECS service to settle and check its tasks
+are running. CI also passes the image it applied and fails if the service
+settled on another one (e.g. the deployment circuit breaker rolled back):
 
 ```bash
 ./scripts/smoke.sh dev
