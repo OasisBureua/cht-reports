@@ -33,7 +33,22 @@ export interface GenerateResult {
   requestId?: string;
 }
 
-export class CompanionGenerationError extends Error {}
+/** Companion's 429 code when the day's report generation token budget is used up (CPR-21). */
+export const TOKEN_BUDGET_EXCEEDED = 'token_budget_exceeded';
+
+export class CompanionGenerationError extends Error {
+  constructor(
+    message: string,
+    /** HTTP status companion returned. */
+    readonly status: number,
+    /** Companion's `error.code` (e.g. `token_budget_exceeded`), if it sent one. */
+    readonly code?: string,
+    /** Companion's `error.message` as sent, without the status prefix. */
+    readonly companionMessage?: string,
+  ) {
+    super(message);
+  }
+}
 
 interface CompanionGenerateResponse {
   text: string;
@@ -68,7 +83,12 @@ export class CompanionClient {
       const errBody = (await response.json().catch(() => null)) as CompanionErrorResponse | null;
       const message = errBody?.error?.message ?? `HTTP ${response.status}`;
       this.logger.error(`companion /generate failed (${response.status}) requestId=${request.requestId ?? '?'}: ${message}`);
-      throw new CompanionGenerationError(`companion /generate returned ${response.status}: ${message}`);
+      throw new CompanionGenerationError(
+        `companion /generate returned ${response.status}: ${message}`,
+        response.status,
+        errBody?.error?.code,
+        errBody?.error?.message,
+      );
     }
 
     const body = (await response.json()) as CompanionGenerateResponse;

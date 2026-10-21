@@ -10,7 +10,7 @@ import {
 } from './orchestrator';
 import type { ExecutiveSummaryContent } from './content/executive-summary';
 import type { ContentHubClient } from './packet/content-hub.client';
-import type { CompanionClient } from '../companion/companion.client';
+import { CompanionGenerationError, type CompanionClient } from '../companion/companion.client';
 import type { ReportDocService } from './render/report-doc.service';
 import type { ReportStorageService } from './storage/report-storage.service';
 import type { ReportReadyNotifier } from './notify/report-ready.service';
@@ -224,6 +224,31 @@ describe('ReportGenerationOrchestrator', () => {
     expect(state.markFailed).toHaveBeenCalledWith('rep-1', 'companion down');
     expect(state.markComplete).not.toHaveBeenCalled();
     expect(notifier.notify).not.toHaveBeenCalled();
+  });
+
+  it('fails without retrying when companion says the token budget is used up (CPR-21)', async () => {
+    const { orchestrator, state, notifier, generate } = setup(stateRow());
+    const budget = 'The daily report generation budget (500,000 tokens) is used up. It resets at 00:00 UTC.';
+    generate.mockRejectedValue(
+      new CompanionGenerationError(`companion /generate returned 429: ${budget}`, 429, 'token_budget_exceeded', budget),
+    );
+    const logError = jest.spyOn((orchestrator as unknown as { logger: { error: () => void } }).logger, 'error');
+
+    await expect(orchestrator.handle({ requestId: 'rep-1', campaignId: '9' })).resolves.toBeUndefined();
+
+    expect(logError).toHaveBeenCalledWith(`Request rep-1 failed: companion /generate returned 429: ${budget}`);
+    expect(state.markFailed).toHaveBeenCalledWith('rep-1', budget);
+    expect(notifier.notify).not.toHaveBeenCalled();
+  });
+
+  it('still retries other companion 429s', async () => {
+    const { orchestrator, state, generate } = setup(stateRow());
+    const err = new CompanionGenerationError('companion /generate returned 429: slow down', 429, 'rate_limited', 'slow down');
+    generate.mockRejectedValue(err);
+
+    await expect(orchestrator.handle({ requestId: 'rep-1', campaignId: '9' })).rejects.toBe(err);
+
+    expect(state.markFailed).toHaveBeenCalledWith('rep-1', 'companion /generate returned 429: slow down');
   });
 
   it('does not notify again for an already-complete redelivery', async () => {
