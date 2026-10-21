@@ -44,6 +44,8 @@ export interface GenerationState {
   s3KeyPdf: string | null;
   /** Regenerations so far. Platform owns this: it increments it on Regenerate. */
   editAttempts: number;
+  /** Changes asked for with the latest Regenerate (CPR-52). Platform owns this. */
+  editInstructions: string | null;
   /** Version of the last completed upload (v1 = first report). */
   version: number | null;
   /** When this job started waiting for a Zoom transcript (CPR-47). */
@@ -103,6 +105,7 @@ export class GenerationStateService {
       lastError: null,
       s3KeyPdf: null,
       editAttempts: 0,
+      editInstructions: null,
       version: null,
       waitingSince: null,
       createdAt: now,
@@ -264,6 +267,7 @@ export class GenerationStateService {
       lastError: (item.last_error as string) ?? null,
       s3KeyPdf: (item.s3_key_pdf as string) ?? null,
       editAttempts: (item.edit_attempts as number) ?? 0,
+      editInstructions: (item.edit_instructions as string) || null,
       version: (item.version as number) ?? null,
       waitingSince: (item.waiting_since as string) ?? null,
       createdAt: item.created_at as string,

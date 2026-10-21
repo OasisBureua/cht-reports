@@ -1,5 +1,5 @@
 import { mockClient } from 'aws-sdk-client-mock';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { GetObjectCommand, S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { ReportStorageService, reportVersion } from './report-storage.service';
 import { AwsClients } from '../../aws/aws-clients';
 import { testEnv } from '../../config/test-env';
@@ -107,6 +107,43 @@ describe('ReportStorageService', () => {
       /not a PDF/i,
     );
     expect(s3Mock.commandCalls(PutObjectCommand)).toHaveLength(0);
+  });
+});
+
+describe('ReportStorageService run manifest and earlier versions', () => {
+  beforeEach(() => {
+    s3Mock.reset();
+  });
+
+  it('writes the run manifest as v{N}.meta.json (CPR-50)', async () => {
+    s3Mock.on(PutObjectCommand).resolves({});
+
+    const key = await service().saveManifest('9', 'req-1', 2, { reportId: 'req-1' });
+
+    expect(key).toBe('reports/9/req-1/v2.meta.json');
+    const input = s3Mock.commandCalls(PutObjectCommand)[0].args[0].input;
+    expect(JSON.parse(input.Body as string)).toEqual({ reportId: 'req-1' });
+    expect(input.ContentType).toBe('application/json');
+  });
+
+  it("reads an earlier version's content JSON (CPR-52)", async () => {
+    s3Mock.on(GetObjectCommand, { Key: 'reports/9/req-1/v1.json' }).resolves({
+      Body: { transformToString: async () => JSON.stringify({ narrative: { programTitle: 'T' } }) },
+    } as never);
+
+    expect(await service().loadContent('9', 'req-1', 1)).toEqual({ narrative: { programTitle: 'T' } });
+  });
+
+  it.each(['NoSuchKey', 'AccessDenied'])('returns null when the version is not there (%s)', async (name) => {
+    s3Mock.on(GetObjectCommand).rejects(Object.assign(new Error(name), { name }));
+
+    expect(await service().loadContent('9', 'req-1', 1)).toBeNull();
+  });
+
+  it('throws other S3 errors', async () => {
+    s3Mock.on(GetObjectCommand).rejects(Object.assign(new Error('slow down'), { name: 'SlowDown' }));
+
+    await expect(service().loadContent('9', 'req-1', 1)).rejects.toThrow('slow down');
   });
 });
 

@@ -32,9 +32,35 @@ Each report row keeps every version: `v1` is the first report, and each
 Regenerate writes the next one (`v2`, `v3`, ...). The worker takes the
 number from Platform's `edit_attempts` (version = edit_attempts + 1), so a
 retried attempt rewrites the same version instead of skipping one. Each
-version has its own `.pdf`, `.html`, `.json` and `.model.txt`. On complete
-the worker writes `s3_key_pdf` and `version`, which Platform shows and
-downloads.
+version has its own `.pdf`, `.html`, `.json`, `.model.txt` and
+`.meta.json`. On complete the worker writes `s3_key_pdf` and `version`,
+which Platform shows and downloads.
+
+### Regenerate with edit instructions (CPR-52)
+
+When Platform's Regenerate carries `edit_instructions`, the worker gives the
+model the previous version's narrative (`v{N-1}.json`) and the instructions,
+after the transcripts, and asks it to revise that version. Without
+instructions, Regenerate writes a fresh report. If the previous version's
+JSON is missing or unreadable (S3 NoSuchKey/AccessDenied), or is too long to
+leave the transcripts at least 20,000 of companion's 100,000 input
+characters, the instructions are applied to a fresh report and the manifest
+records `revision.previousLoaded: false`. Other S3 errors fail the attempt so
+the job retries. The HTML preview's internal notes show the instructions a
+version followed.
+
+### Run manifest (CPR-50)
+
+`v{N}.meta.json` records what produced each version: `template` (type,
+semver, source, `systemPromptSha256`); `model` (`configuredId`, the worker's
+`BEDROCK_MODEL_ID`, since companion owns the actual model choice; finish
+reason, tokens and estimated cost); window, requested sources, `inputs` (each
+source's status, row count and fetch time); `revision` (the edit
+instructions); and stage `timingsMs`. It's internal: a failed write of it or
+of `.model.txt` is logged without failing the report. The HTML preview's
+internal notes list the same per-source counts and fetch times in a table,
+which replaces the older input-completeness sentence. Worker log lines carry
+the report id.
 
 ### Waiting for the Zoom transcript (CPR-47)
 

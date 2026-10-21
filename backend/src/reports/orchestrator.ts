@@ -12,21 +12,34 @@
  * marks the request failed rather than retrying forever.
  */
 
+import { createHash } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { AppEnv } from '../config/env';
 import { APP_ENV } from '../config/config.module';
-import { CompanionClient, CompanionGenerationError, TOKEN_BUDGET_EXCEEDED } from '../companion/companion.client';
+import {
+  CompanionClient,
+  CompanionGenerationError,
+  TOKEN_BUDGET_EXCEEDED,
+  type GenerateResult,
+} from '../companion/companion.client';
 import { ContentHubClient } from './packet/content-hub.client';
 import type { ReportInputPacket } from './packet/report-packet.types';
 import { ReportDocService } from './render/report-doc.service';
-import { parseNarrative, type ExecutiveSummaryContent, type Kol } from './content/executive-summary';
+import {
+  parseNarrative,
+  type ExecutiveSummaryContent,
+  type GeneratedNarrative,
+  type InputSourceSummary,
+  type Kol,
+  type RevisionSummary,
+} from './content/executive-summary';
 import { attendeesContext, buildAttendeesSummary } from './content/attendees';
 import { buildSurveyCharts, buildSurveyFreeText, surveyResultsContext } from './content/survey-charts';
 import { ReportStorageService, reportVersion } from './storage/report-storage.service';
 import { ReportReadyNotifier } from './notify/report-ready.service';
-import { GenerationStateService } from './state/generation-state.service';
+import { GenerationStateService, type GenerationState } from './state/generation-state.service';
 import { cleanTranscriptText, splitPrerecordedLivestream } from './preprocess/transcript';
-import { TemplateStore } from './templates/template-store.service';
+import { TemplateStore, type LoadedTemplate } from './templates/template-store.service';
 import { REPORT_SURVEY_TYPES, reportSurveyResponses } from './preprocess/survey';
 import { pendingTranscripts } from './packet/transcript-wait';
 import { ReportRequestQueue } from './queue/report-request-queue.service';
@@ -70,6 +83,112 @@ export interface ReportRequest {
   campaignId: string;
 }
 
+/** Platform caps edit instructions at 2,000 characters; hold the worker to the same. */
+export const EDIT_INSTRUCTIONS_LIMIT = 2_000;
+
+/** A Regenerate with edit instructions (CPR-52): revise the previous version. */
+export interface Revision {
+  previousVersion: number;
+  instructions: string;
+  /** The previous version's narrative; null when its content JSON wasn't found or didn't fit. */
+  previous: GeneratedNarrative | null;
+}
+
+export interface GeneratedReport {
+  content: ExecutiveSummaryContent;
+  generation: GenerateResult;
+}
+
+/** v{N}.meta.json (CPR-50): what produced this version of the report. */
+export interface RunManifest {
+  reportId: string;
+  campaignId: string;
+  version: number;
+  attempt: number;
+  completedAt: string;
+  template: { type: string | null; semver: string | null; source: string; systemPromptSha256: string };
+  model: {
+    /** The worker's BEDROCK_MODEL_ID; companion owns the actual model choice. */
+    configuredId: string;
+    finishReason: string;
+    tokensInput: number | null;
+    tokensOutput: number | null;
+    estimatedCostUsd: number | null;
+  };
+  window: { start: string | null; end: string | null };
+  sources: string[];
+  inputs: InputSourceSummary[];
+  revision: RevisionSummary | null;
+  timingsMs: Record<string, number>;
+}
+
+export interface ManifestRun {
+  state: GenerationState;
+  version: number;
+  attempt: number;
+  completedAt: string;
+  templateType: string | null;
+  template: Pick<LoadedTemplate, 'systemPrompt' | 'semver' | 'source'>;
+  configuredModelId: string;
+  content: ExecutiveSummaryContent;
+  generation: GenerateResult;
+  timingsMs: Record<string, number>;
+}
+
+export function buildManifest(run: ManifestRun): RunManifest {
+  const { state, content, generation } = run;
+  return {
+    reportId: state.requestId,
+    campaignId: String(state.campaignId),
+    version: run.version,
+    attempt: run.attempt,
+    completedAt: run.completedAt,
+    template: {
+      type: run.templateType,
+      semver: run.template.semver,
+      source: run.template.source,
+      systemPromptSha256: createHash('sha256').update(run.template.systemPrompt).digest('hex'),
+    },
+    model: {
+      configuredId: run.configuredModelId,
+      finishReason: generation.finishReason,
+      tokensInput: generation.tokensInput ?? null,
+      tokensOutput: generation.tokensOutput ?? null,
+      estimatedCostUsd: costUsd(generation),
+    },
+    window: { start: state.windowStart, end: state.windowEnd },
+    sources: state.sources,
+    inputs: content.inputs ?? [],
+    revision: content.revision ?? null,
+    timingsMs: { ...run.timingsMs, total: Object.values(run.timingsMs).reduce((a, b) => a + b, 0) },
+  };
+}
+
+/** The packet's sources with counts and fetch times, in Hub's order. */
+export function inputSummary(packet: ReportInputPacket): InputSourceSummary[] {
+  return Object.entries(packet.inputCompleteness ?? {}).map(([source, v]) => ({
+    source,
+    status: v.status,
+    rowCount: v.rowCount,
+    fetchedAt: v.fetchedAt,
+  }));
+}
+
+/**
+ * Prompt blocks for a Regenerate with instructions. They go after the
+ * transcripts, so the model reads the instructions last.
+ */
+export function revisionBlocks(revision: Revision): string[] {
+  const instructions = `Editor's instructions for this version:\n${revision.instructions}`;
+  if (!revision.previous) {
+    return [`${instructions}\n\nFollow these instructions when writing the report.`];
+  }
+  return [
+    `Previous version (v${revision.previousVersion}) of this report, as JSON:\n${JSON.stringify(revision.previous)}`,
+    `${instructions}\n\nRevise the previous version to follow these instructions. Keep what they do not ask to change, use only the data above, and reply in the same JSON format.`,
+  ];
+}
+
 @Injectable()
 export class ReportGenerationOrchestrator {
   private readonly logger = new Logger(ReportGenerationOrchestrator.name);
@@ -103,9 +222,16 @@ export class ReportGenerationOrchestrator {
 
     const campaignId = existing.campaignId;
     const version = reportVersion(existing.editAttempts);
+    const timingsMs: Record<string, number> = {};
+    let lapStart = Date.now();
+    const lap = (stage: string) => {
+      const now = Date.now();
+      timingsMs[stage] = now - lapStart;
+      lapStart = now;
+    };
 
     try {
-      await this.state.beginAttempt(requestId, 'PULLING_DATA');
+      const { attemptCount } = await this.state.beginAttempt(requestId, 'PULLING_DATA');
       const packet = await this.contentHub.fetchReportPacket({
         campaignId,
         windowStart: existing.windowStart,
@@ -138,16 +264,48 @@ export class ReportGenerationOrchestrator {
       }
 
       const { template, note: templateNote } = await this.templates.load(packet.template);
+      const revision = await this.loadRevision(existing, version);
+      lap('pullingData');
 
       await this.state.markStatus(requestId, 'GENERATING');
       if (templateNote) this.logger.warn(`Request ${requestId}: ${templateNote}`);
-      const content = await this.generateContent(packet, template.systemPrompt, requestId, version);
+      const { content, generation } = await this.generateContent(
+        packet,
+        template.systemPrompt,
+        requestId,
+        version,
+        revision,
+      );
+      lap('generating');
 
       await this.state.markStatus(requestId, 'RENDERING');
       const html = await this.reportDoc.renderExecutiveSummary(content, { htmlTemplate: template.html });
+      lap('rendering');
 
       await this.state.markStatus(requestId, 'UPLOADING');
       const s3Key = await this.storage.uploadReport(String(campaignId), requestId, version, html, content);
+      lap('uploading');
+
+      const manifest = buildManifest({
+        state: existing,
+        version,
+        attempt: attemptCount,
+        completedAt: new Date().toISOString(),
+        templateType: packet.template?.type ?? null,
+        template,
+        configuredModelId: this.env.bedrockModelId,
+        content,
+        generation,
+        timingsMs,
+      });
+      // Internal record: a failed write is logged, never fails a finished report.
+      await this.storage
+        .saveManifest(String(campaignId), requestId, version, manifest)
+        .catch((err: unknown) =>
+          this.logger.warn(
+            `Request ${requestId}: run manifest not saved: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        );
       await this.state.markComplete(requestId, s3Key, version);
 
       this.logger.log(`Request ${requestId} complete: ${s3Key}`);
@@ -171,6 +329,28 @@ export class ReportGenerationOrchestrator {
   }
 
   /**
+   * CPR-52: a Regenerate with edit instructions revises the previous version.
+   * Without instructions, Regenerate writes a fresh report as before.
+   */
+  private async loadRevision(state: GenerationState, version: number): Promise<Revision | null> {
+    const instructions = state.editInstructions?.trim().slice(0, EDIT_INSTRUCTIONS_LIMIT);
+    if (version < 2 || !instructions) return null;
+
+    const previousVersion = version - 1;
+    // Other S3 errors throw, so the attempt fails and the job retries.
+    const stored = (await this.storage.loadContent(String(state.campaignId), state.requestId, previousVersion)) as {
+      narrative?: GeneratedNarrative;
+    } | null;
+    const previous = stored?.narrative ?? null;
+    if (!previous) {
+      this.logger.warn(
+        `Request ${state.requestId}: v${previousVersion} content not found or not readable; applying the instructions to a fresh report`,
+      );
+    }
+    return { previousVersion, instructions, previous };
+  }
+
+  /**
    * Assembles a report-generation prompt from the Content Hub packet and
    * calls cht-companion `/generate`. Filler-word cleaning and
    * pre-record/livestream split happen here. Hub already ETL'd the warehouse
@@ -181,7 +361,8 @@ export class ReportGenerationOrchestrator {
     systemPrompt: string,
     requestId: string,
     version: number,
-  ): Promise<ExecutiveSummaryContent> {
+    requested: Revision | null = null,
+  ): Promise<GeneratedReport> {
     const cleanedSessions = packet.sessions.map((session) => {
       const cleaned = cleanTranscriptText(session.transcriptText ?? '');
       const { prerecorded, livestream } = splitPrerecordedLivestream(cleaned);
@@ -218,43 +399,53 @@ export class ReportGenerationOrchestrator {
       .map((q) => `${q.id}: ${q.prompt}${q.options?.length ? ` [${q.options.join(' | ')}]` : ''}`)
       .join('\n');
 
+    const headBlocks = [
+      `Campaign: ${packet.campaignName ?? `Campaign ${packet.campaignId}`}`,
+      `Program format: ${VARIANT_LABEL[variant]}${hasQa ? ', with live audience Q&A' : ''}`,
+      `Faculty (Content Hub):\n${facultyContext || 'none'}`,
+      `Attendance:\n${attendeesContext(attendees)}`,
+      `Survey questions (id: prompt [options]):\n${questionContext || 'none'}`,
+      `Survey results (computed; quote these numbers exactly):\n${surveyResultsContext(surveyCharts) || 'none'}`,
+      `Post-event feedback survey responses (n=${surveyAnswers.length}):\n${surveyContext || 'none'}`,
+      `Platform metrics:\n${platformContext || 'none'}`,
+      `HubSpot:\n${hubspotContext || 'none'}`,
+    ];
+    let revision = requested;
+    const withPrevious = revision?.previous ? [...headBlocks, ...revisionBlocks(revision)].join('\n\n').length : 0;
+    if (revision && withPrevious > USER_CONTENT_LIMIT - MIN_TRANSCRIPT_ROOM) {
+      this.logger.warn(
+        `Request ${requestId}: v${revision.previousVersion} content too long to include; applying the instructions to a fresh report`,
+      );
+      revision = { ...revision, previous: null };
+    }
     const userContent = fitToLimit(
-      [
-        `Campaign: ${packet.campaignName ?? `Campaign ${packet.campaignId}`}`,
-        `Program format: ${VARIANT_LABEL[variant]}${hasQa ? ', with live audience Q&A' : ''}`,
-        `Faculty (Content Hub):\n${facultyContext || 'none'}`,
-        `Attendance:\n${attendeesContext(attendees)}`,
-        `Survey questions (id: prompt [options]):\n${questionContext || 'none'}`,
-        `Survey results (computed; quote these numbers exactly):\n${surveyResultsContext(surveyCharts) || 'none'}`,
-        `Post-event feedback survey responses (n=${surveyAnswers.length}):\n${surveyContext || 'none'}`,
-        `Platform metrics:\n${platformContext || 'none'}`,
-        `HubSpot:\n${hubspotContext || 'none'}`,
-      ],
+      headBlocks,
       `Transcripts:\n${transcriptContext || 'none'}`,
+      USER_CONTENT_LIMIT,
+      revision ? revisionBlocks(revision) : [],
     );
 
     // Output budget comes from REPORT_MAX_OUTPUT_TOKENS (CompanionClient
     // default). No temperature: Claude Sonnet 5 on Bedrock rejects it.
     const result = await this.companion.generate({ systemPrompt, userContent, requestId });
-    await this.storage.saveModelReply(String(packet.campaignId), requestId, version, result.text);
+    // Debug copy: a failed write is logged, never fails (and re-bills) the generation.
+    await this.storage
+      .saveModelReply(String(packet.campaignId), requestId, version, result.text)
+      .catch((err: unknown) =>
+        this.logger.warn(`Request ${requestId}: model reply not saved: ${err instanceof Error ? err.message : String(err)}`),
+      );
     this.logger.log(
-      `Generation for campaign ${packet.campaignId}: ${result.finishReason}, tokens in=${result.tokensInput ?? '?'} out=${result.tokensOutput ?? '?'}, ${estimateCostUsd(result)}`,
+      `Request ${requestId}: generation for campaign ${packet.campaignId} v${version}${revision ? ' (revision)' : ''}: ${result.finishReason}, tokens in=${result.tokensInput ?? '?'} out=${result.tokensOutput ?? '?'}, ${estimateCostUsd(result)}`,
     );
     if (result.finishReason === 'truncated') {
       // Never publish a cut-off report: fail this attempt so the job retries.
       throw new ReportGenerationTruncatedError(
-        `Generation hit the output token budget (${result.tokensOutput ?? '?'} tokens) for campaign ${packet.campaignId}`,
+        `Generation hit the output token budget (${result.tokensOutput ?? '?'} tokens) for campaign ${packet.campaignId}, request ${requestId}`,
       );
     }
     const narrative = parseNarrative(result.text);
 
-    // Template availability is our concern, not the client's: keep it out of
-    // the report's input-completeness note.
-    const missingSources = Object.entries(packet.inputCompleteness)
-      .filter(([source, v]) => source !== 'template' && v.status !== 'ok')
-      .map(([source, v]) => `${source}: ${v.status}`);
-
-    return {
+    const content: ExecutiveSummaryContent = {
       title: `Executive Summary: ${narrative.programTitle ?? packet.campaignName ?? `Campaign ${packet.campaignId}`}`,
       campaignName: packet.campaignName ?? `Campaign ${packet.campaignId}`,
       variant,
@@ -272,34 +463,55 @@ export class ReportGenerationOrchestrator {
       transcriptNote: cleanedSessions.some((s) => s.prerecorded.trim() || s.livestream)
         ? MACHINE_TRANSCRIPT_NOTE
         : null,
-      inputCompletenessNote:
-        missingSources.length > 0
-          ? `The following sources were unavailable or incomplete when this report was generated: ${missingSources.join(', ')}.`
-          : null,
+      // The per-source table (inputs) replaces this note; older versions still carry it.
+      inputCompletenessNote: null,
+      inputs: inputSummary(packet),
+      revision: revision
+        ? {
+            previousVersion: revision.previousVersion,
+            instructions: revision.instructions,
+            previousLoaded: revision.previous !== null,
+          }
+        : null,
     };
+    return { content, generation: result };
   }
 }
 
 /** cht-companion /generate caps user_content at 100,000 characters. */
 export const USER_CONTENT_LIMIT = 100_000;
 
+/** A revision drops the previous version from the prompt if it would leave the transcripts less than this. */
+export const MIN_TRANSCRIPT_ROOM = 20_000;
+
 /**
  * Join the context blocks, trimming only the transcripts (the long part)
  * to stay under the companion limit. The cut is marked so the model knows.
+ * Never returns more than `limit` characters.
  */
-export function fitToLimit(headBlocks: string[], transcripts: string, limit = USER_CONTENT_LIMIT): string {
+export function fitToLimit(
+  headBlocks: string[],
+  transcripts: string,
+  limit = USER_CONTENT_LIMIT,
+  tailBlocks: string[] = [],
+): string {
   const head = headBlocks.join('\n\n');
+  const tail = tailBlocks.length ? `\n\n${tailBlocks.join('\n\n')}` : '';
   const marker = '\n[Transcript truncated to fit the input limit.]';
-  const room = limit - head.length - 2;
+  const room = limit - head.length - tail.length - 2;
   const body = transcripts.length <= room ? transcripts : `${transcripts.slice(0, Math.max(0, room - marker.length))}${marker}`;
-  return `${head}\n\n${body}`;
+  return `${head}\n\n${body}${tail}`.slice(0, limit);
 }
 
 export class ReportGenerationTruncatedError extends Error {}
 
 /** Claude Sonnet 5 list price: $2 per million input tokens, $10 per million output. */
+export function costUsd(result: { tokensInput?: number; tokensOutput?: number }): number | null {
+  if (result.tokensInput === undefined || result.tokensOutput === undefined) return null;
+  return (result.tokensInput * 2 + result.tokensOutput * 10) / 1_000_000;
+}
+
 export function estimateCostUsd(result: { tokensInput?: number; tokensOutput?: number }): string {
-  if (result.tokensInput === undefined || result.tokensOutput === undefined) return 'cost unknown';
-  const usd = (result.tokensInput * 2 + result.tokensOutput * 10) / 1_000_000;
-  return `~$${usd.toFixed(3)}`;
+  const usd = costUsd(result);
+  return usd === null ? 'cost unknown' : `~$${usd.toFixed(3)}`;
 }

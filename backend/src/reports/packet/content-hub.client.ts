@@ -74,7 +74,7 @@ export class ContentHubClient {
     if (!response.ok) {
       const body = await response.text();
       this.logger.error(
-        `Content Hub report-packet failed (${response.status}) campaign=${input.campaignId} url=${url} ${body.slice(0, 200)}`,
+        `Content Hub report-packet failed (${response.status}) campaign=${input.campaignId} requestId=${requestId} url=${url} ${body.slice(0, 200)}`,
       );
       throw new ContentHubClientError(`Content Hub returned ${response.status}: ${body}`);
     }
@@ -95,7 +95,9 @@ export class ContentHubClient {
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get('location');
       const next = sameOriginRedirect(url, location);
-      this.logger.warn(`report-packet HTTP ${response.status} redirect location=${location} follow=${next ?? 'rejected'}`);
+      this.logger.warn(
+        `report-packet HTTP ${response.status} redirect location=${location} follow=${next ?? 'rejected'} requestId=${requestId}`,
+      );
       if (!next) {
         throw new ContentHubClientError(`Content Hub redirected to ${location ?? '(none)'}`);
       }
