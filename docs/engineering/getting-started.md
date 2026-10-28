@@ -34,7 +34,6 @@ Set in Terraform (`ecs_backend` environment_variables / secret_arns):
 | Name | Purpose |
 |------|---------|
 | `CONTENTHUB_BASE_URL` | Content Hub origin or `/api/public` (rewritten to `/api/admin`) |
-| `CONTENTHUB_API_KEY` | S2S key for `GET .../report-packet` |
 | `REPORT_REQUESTS_QUEUE_URL` | Generate SQS queue |
 | `GENERATION_STATE_TABLE` | DynamoDB job table |
 | `CONTENTHUB_M2M_*` | Cognito client_credentials for Hub, Platform notify, and companion `/generate` (this repo owns `cht-reports-m2m-*`) |

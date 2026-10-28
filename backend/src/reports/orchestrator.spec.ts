@@ -4,6 +4,8 @@ import {
   ReportGenerationOrchestrator,
   USER_CONTENT_LIMIT,
   buildManifest,
+  capBlocks,
+  fitToLimit,
   type GeneratedReport,
   type Revision,
   type RunManifest,
@@ -395,6 +397,35 @@ describe('report content from the packet (CPR-46)', () => {
     expect(companion.generate.mock.calls[0][0].userContent).toContain('Attendees by specialty: Oncology (n=1)');
   });
 
+  it('builds the social section and sends its totals, without spend, to the model', async () => {
+    const { companion, run } = build();
+    const content = await run({
+      socialPerformance: {
+        linkedPosts: 2,
+        postsWithMetrics: 1,
+        notes: ['YouTube views are lifetime totals as of the date shown.'],
+        channels: [
+          {
+            channel: 'youtube',
+            posts: 1,
+            paidPosts: 0,
+            organic: { views: 1500, likes: 15 },
+            paid: {},
+            metricSources: { 'organic.views': 'youtube', 'organic.likes': 'youtube' },
+            asOf: '2026-10-20',
+            topPosts: [{ postId: 'yt1', title: 'Big video', url: null, postedAt: null, paid: false, metrics: { views: 1500, likes: 15 } }],
+          },
+        ],
+      },
+    });
+
+    expect(content.social?.channels.map((c) => c.label)).toEqual(['YouTube']);
+    const userContent = companion.generate.mock.calls[0][0].userContent;
+    expect(userContent).toContain(
+      'Social performance (computed; quote these numbers exactly):\nYouTube: 1 post, as of 2026-10-20; organic: Views 1,500, Likes 15. Top post: "Big video" (Views 1,500)\nYouTube views are lifetime totals',
+    );
+  });
+
   it('labels charts from the feedback survey schema only', async () => {
     const { run } = build();
     const content = await run({
@@ -584,5 +615,36 @@ describe('buildManifest (CPR-50)', () => {
     });
     expect(manifest.inputs).toEqual([]);
     expect(manifest.revision).toBeNull();
+  });
+});
+
+describe('fitToLimit (CPR-62)', () => {
+  it('leaves short inputs whole', () => {
+    expect(fitToLimit(['A', 'B'], 'T', 100)).toBe('A\n\nB\n\nT');
+  });
+
+  it('caps the longest head blocks so the transcripts keep their room', () => {
+    const hubspot = `HubSpot:\n${'h'.repeat(USER_CONTENT_LIMIT)}`;
+    const platform = `Platform metrics:\n${'p'.repeat(USER_CONTENT_LIMIT / 2)}`;
+    const user = fitToLimit(['Campaign: X', 'Survey results (computed): 75% (n=4)', platform, hubspot], 't'.repeat(50_000));
+
+    expect(user.length).toBeLessThanOrEqual(USER_CONTENT_LIMIT);
+    expect(user).toContain('Campaign: X\n\nSurvey results (computed): 75% (n=4)\n\nPlatform metrics:');
+    expect(user.match(/\[Cut to fit the input limit\.\]/g)).toHaveLength(2);
+    expect(user.split('t').length - 1).toBeGreaterThanOrEqual(MIN_TRANSCRIPT_ROOM - 100);
+  });
+
+  it('gives the head the room short transcripts leave', () => {
+    const user = fitToLimit([`HubSpot:\n${'h'.repeat(90_000)}`], 'Transcripts:\nnone');
+    expect(user).not.toContain('[Cut to fit');
+  });
+});
+
+describe('capBlocks', () => {
+  it('cuts only blocks above the common length', () => {
+    const [short, long1, long2] = capBlocks(['a'.repeat(10), 'b'.repeat(100), 'c'.repeat(200)], 110);
+    expect(short).toHaveLength(10);
+    expect(long1).toHaveLength(50);
+    expect(long2).toHaveLength(50);
   });
 });
