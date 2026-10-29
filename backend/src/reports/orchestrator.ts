@@ -34,6 +34,7 @@ import {
   type RevisionSummary,
 } from './content/executive-summary';
 import { attendeesContext, buildAttendeesSummary } from './content/attendees';
+import { buildSocialSummary, socialContext } from './content/social';
 import { buildSurveyCharts, buildSurveyFreeText, surveyResultsContext } from './content/survey-charts';
 import { ReportStorageService, reportVersion } from './storage/report-storage.service';
 import { ReportReadyNotifier } from './notify/report-ready.service';
@@ -390,6 +391,7 @@ export class ReportGenerationOrchestrator {
     const faculty = hubKols(packet);
     const facultyContext = faculty.map((k) => `${k.name}${k.affiliation ? `, ${k.affiliation}` : ''}`).join('\n');
     const attendees = buildAttendeesSummary(packet);
+    const social = buildSocialSummary(packet);
     const surveyQuestions = (packet.surveyQuestions ?? []).filter(
       (q) => !q.surveyType || REPORT_SURVEY_TYPES.has(q.surveyType.toUpperCase()),
     );
@@ -407,6 +409,7 @@ export class ReportGenerationOrchestrator {
       `Survey questions (id: prompt [options]):\n${questionContext || 'none'}`,
       `Survey results (computed; quote these numbers exactly):\n${surveyResultsContext(surveyCharts) || 'none'}`,
       `Post-event feedback survey responses (n=${surveyAnswers.length}):\n${surveyContext || 'none'}`,
+      `Social performance (computed; quote these numbers exactly):\n${socialContext(social)}`,
       `Platform metrics:\n${platformContext || 'none'}`,
       `HubSpot:\n${hubspotContext || 'none'}`,
     ];
@@ -459,6 +462,7 @@ export class ReportGenerationOrchestrator {
       kols: faculty.length ? faculty : narrative.kols,
       kolSource: faculty.length ? 'hub' : 'transcript',
       attendees,
+      social,
       qaNote: packet.sessions.some((s) => s.platformToolProgramId || s.zoomMeetingUuid) ? QA_CAPTURE_NOTE : null,
       transcriptNote: cleanedSessions.some((s) => s.prerecorded.trim() || s.livestream)
         ? MACHINE_TRANSCRIPT_NOTE
@@ -484,10 +488,33 @@ export const USER_CONTENT_LIMIT = 100_000;
 /** A revision drops the previous version from the prompt if it would leave the transcripts less than this. */
 export const MIN_TRANSCRIPT_ROOM = 20_000;
 
+const BLOCK_CUT = '\n[Cut to fit the input limit.]';
+
 /**
- * Join the context blocks, trimming only the transcripts (the long part)
- * to stay under the companion limit. The cut is marked so the model knows.
- * Never returns more than `limit` characters.
+ * Trim the longest blocks to one common length so all of them total at most
+ * `budget` characters. Shorter blocks (the computed summaries) stay whole.
+ */
+export function capBlocks(blocks: string[], budget: number): string[] {
+  if (blocks.reduce((n, b) => n + b.length, 0) <= budget) return blocks;
+  const lengths = blocks.map((b) => b.length).sort((x, y) => x - y);
+  let remaining = budget;
+  let cap = 0;
+  for (let i = 0; i < lengths.length; i++) {
+    const share = Math.floor(remaining / (lengths.length - i));
+    if (lengths[i] > share) {
+      cap = share;
+      break;
+    }
+    remaining -= lengths[i];
+  }
+  return blocks.map((b) => (b.length <= cap ? b : `${b.slice(0, Math.max(0, cap - BLOCK_CUT.length))}${BLOCK_CUT}`));
+}
+
+/**
+ * Join the context blocks to stay under the companion limit. Head blocks
+ * are capped (CPR-62) so they leave the transcripts at least
+ * MIN_TRANSCRIPT_ROOM; then the transcripts are trimmed. Each cut is marked
+ * so the model knows. Never returns more than `limit` characters.
  */
 export function fitToLimit(
   headBlocks: string[],
@@ -495,7 +522,12 @@ export function fitToLimit(
   limit = USER_CONTENT_LIMIT,
   tailBlocks: string[] = [],
 ): string {
-  const head = headBlocks.join('\n\n');
+  const separators = 2 * headBlocks.length;
+  const tailLength = tailBlocks.length ? tailBlocks.join('\n\n').length + 2 : 0;
+  // MIN_TRANSCRIPT_ROOM at the companion limit, the same share of a smaller one.
+  const reserve = Math.min(transcripts.length, Math.floor((limit * MIN_TRANSCRIPT_ROOM) / USER_CONTENT_LIMIT));
+  const budget = limit - reserve - tailLength - separators;
+  const head = capBlocks(headBlocks, Math.max(0, budget)).join('\n\n');
   const tail = tailBlocks.length ? `\n\n${tailBlocks.join('\n\n')}` : '';
   const marker = '\n[Transcript truncated to fit the input limit.]';
   const room = limit - head.length - tail.length - 2;

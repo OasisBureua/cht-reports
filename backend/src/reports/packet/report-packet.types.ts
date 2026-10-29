@@ -56,6 +56,36 @@ export interface ReportPacketPlatformSlice {
 }
 
 /** CPR-25: Hub catalog pointer to the template body in the reports bucket. */
+/** CPR-61: one linked post, with its metrics for the report window. */
+export interface ReportPacketSocialPost {
+  postId: string;
+  title: string | null;
+  url: string | null;
+  postedAt: string | null;
+  paid: boolean;
+  metrics: Record<string, number>;
+}
+
+/** CPR-61: a channel's totals; `organic` and `paid` are keyed by metric name. */
+export interface ReportPacketSocialChannel {
+  channel: string;
+  posts: number;
+  paidPosts: number;
+  organic: Record<string, number>;
+  paid: Record<string, number>;
+  /** "organic.views" -> "youtube". */
+  metricSources: Record<string, string>;
+  asOf: string | null;
+  topPosts: ReportPacketSocialPost[];
+}
+
+export interface ReportPacketSocialPerformance {
+  linkedPosts: number;
+  postsWithMetrics: number;
+  channels: ReportPacketSocialChannel[];
+  notes: string[];
+}
+
 export interface ReportPacketTemplate {
   id: number;
   type: string;
@@ -81,6 +111,8 @@ export interface ReportInputPacket {
   attendedCount?: number | null;
   avgMinutesWatched?: number | null;
   attendees?: ReportPacketAttendee[];
+  /** CPR-61. Absent on older Hub deploys; null when no social source is on or nothing has metrics. */
+  socialPerformance?: ReportPacketSocialPerformance | null;
   /** Absent on older Hub deploys; null when Hub has no template row. */
   template?: ReportPacketTemplate | null;
   inputCompleteness: Record<string, SourceCompleteness>;

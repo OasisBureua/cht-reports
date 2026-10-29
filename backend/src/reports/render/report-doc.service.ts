@@ -4,7 +4,8 @@
  * executive summary, overview and disclosures, KOLs, attendees, objectives,
  * program overview, conversation, takeaways, comments, survey results,
  * survey takeaways, strategic takeaways, next steps, closing). The audience
- * Q&A sections (from the Daiichi Sankyo report, CPR-18) follow the comments.
+ * Q&A sections (from the Daiichi Sankyo report, CPR-18) follow the comments;
+ * social performance (CPR-61) comes before the strategic takeaways.
  *
  * The template (CPR-25, or the built-in one) owns page size and styling
  * through the placeholders {{title}}, {{cover}}, {{sections}}, {{closing}},
@@ -18,6 +19,7 @@
 import { Injectable } from '@nestjs/common';
 import { BUILTIN_HTML_TEMPLATE } from '../templates/builtin';
 import { withNarrativeDefaults } from '../content/executive-summary';
+import { formatMetric, organicMetrics, paidMetrics, postMetrics, SOCIAL_METRIC_LABELS } from '../content/social';
 import type {
   AttendeeRow,
   AttendeesSummary,
@@ -26,6 +28,7 @@ import type {
   ExecutiveSummaryContent,
   InputSourceSummary,
   Point,
+  SocialChannelSummary,
   SurveyChart,
 } from '../content/executive-summary';
 
@@ -45,6 +48,7 @@ export const SECTION_IDS = [
   'surveyResults',
   'surveyComments',
   'surveyTakeaways',
+  'socialPerformance',
   'conclusions',
   'nextSteps',
 ] as const;
@@ -67,6 +71,7 @@ const SECTION_TITLES: Record<SectionId, string> = {
   surveyResults: 'Post Webinar Survey Results',
   surveyComments: 'Survey Comments',
   surveyTakeaways: 'Survey Result Takeaways',
+  socialPerformance: 'Social Performance',
   conclusions: 'Strategic Takeaways',
   nextSteps: 'Conclusion & Actionable Next Steps',
 };
@@ -330,6 +335,9 @@ function renderSection(id: SectionId, content: ExecutiveSummaryContent, words: W
 
     case 'attendees':
       return content.attendees ? attendeeSlides(content.attendees, words) : [];
+
+    case 'socialPerformance':
+      return (content.social?.channels ?? []).map(socialSlide);
 
     case 'objectives': {
       const items = n.objectives.map(asPoint);
@@ -642,6 +650,79 @@ function countTable(heading: string, rows: CountRow[]): string {
     `<tbody>${rows.map((r) => `<tr><td>${esc(r.label)}</td><td>${r.count}</td></tr>`).join('')}</tbody>`,
     '</table>',
   ].join('');
+}
+
+// ---------------------------------------------------------------- social performance
+
+/** Stat tiles per row: more don't fit the slide width. */
+const MAX_TILES = 5;
+const POST_METRIC_COLUMNS = 3;
+
+/**
+ * One slide per channel: organic and paid totals, then the top posts. The
+ * table's column widths are inline so templates already in S3 fit it.
+ */
+function socialSlide(c: SocialChannelSummary): string {
+  const tiles = (items: string[][]) =>
+    items.length
+      ? `<dl class="attendee-facts">${items
+          .slice(0, MAX_TILES)
+          .map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`)
+          .join('')}</dl>`
+      : '';
+  const label = (m: string, prefix: string) => {
+    const name = SOCIAL_METRIC_LABELS[m] ?? m;
+    return prefix ? `${prefix} ${m === 'ctr' ? name : name.toLowerCase()}` : name;
+  };
+  // Organic and paid rows are told apart only when the channel has both.
+  const organic = [
+    ['Posts', c.paidPosts ? `${c.posts} (${c.paidPosts} paid)` : String(c.posts)],
+    ...organicMetrics(c).map((m) => [label(m, c.paidPosts ? 'Organic' : ''), formatMetric(m, c.organic[m])]),
+  ];
+  const paid = paidMetrics(c).map((m) => [label(m, 'Paid'), formatMetric(m, c.paid[m])]);
+
+  const metrics = postMetrics(c, POST_METRIC_COLUMNS);
+  const mixed = c.paidPosts > 0 && c.paidPosts < c.posts;
+  const table = c.topPosts.length
+    ? [
+        '<table class="attendee-table"><thead><tr><th style="width:44%">Top posts</th><th>Posted</th>',
+        mixed ? '<th>Type</th>' : '',
+        metrics.map((m) => `<th>${esc(SOCIAL_METRIC_LABELS[m] ?? m)}</th>`).join(''),
+        '</tr></thead><tbody>',
+        c.topPosts
+          .map(
+            (p) =>
+              `<tr><td style="width:44%">${esc(p.title)}</td><td style="white-space:nowrap">${esc(shortDate(p.postedAt))}</td>${mixed ? `<td>${p.paid ? 'Paid' : 'Organic'}</td>` : ''}${metrics
+                .map((m) => `<td>${m in p.metrics ? esc(formatMetric(m, p.metrics[m])) : '–'}</td>`)
+                .join('')}</tr>`,
+          )
+          .join(''),
+        '</tbody></table>',
+      ].join('')
+    : '';
+  const asOf = c.asOf ? shortDate(c.asOf) : null;
+  const lifetime = 'views' in c.organic && !('viewsGained' in c.organic);
+  const partial = metrics.includes('viewsGained') && c.topPosts.some((p) => !('viewsGained' in p.metrics));
+  const note = [
+    lifetime ? `Lifetime views${asOf ? ` as of ${asOf}` : ''}.` : asOf ? `As of ${asOf}.` : '',
+    partial ? 'Views in period need a snapshot from before the period or a publish date inside it.' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  return slide(
+    'socialPerformance',
+    `Social Performance – ${c.label}`,
+    `${tiles(organic)}${tiles(paid)}${table}${note ? `<p class="chart-note">${esc(note)}</p>` : ''}`,
+  );
+}
+
+/** "Oct 20, 2026" from an ISO date or timestamp; "–" when absent. */
+function shortDate(value: string | null): string {
+  if (!value) return '–';
+  const d = new Date(value.length === 10 ? `${value}T00:00:00Z` : value);
+  return Number.isNaN(d.getTime())
+    ? value
+    : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 }
 
 // ---------------------------------------------------------------- survey charts

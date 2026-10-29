@@ -1,6 +1,6 @@
 import { chartSlide, paginate, ReportDocService, SECTION_IDS, TRANSCRIPT_KOLS_NOTE } from './report-doc.service';
 import { BUILTIN_HTML_TEMPLATE } from '../templates/builtin';
-import type { ExecutiveSummaryContent, GeneratedNarrative } from '../content/executive-summary';
+import type { ExecutiveSummaryContent, GeneratedNarrative, SocialChannelSummary } from '../content/executive-summary';
 
 const narrative: GeneratedNarrative = {
   programTitle: 'HER2-Low Update',
@@ -108,7 +108,7 @@ describe('ReportDocService', () => {
     const html = await service.renderExecutiveSummary(content);
     expect(html).toContain('<section class="internal-notes">');
     expect(html).toContain('hubspot: missing');
-    expect(html).toContain('Not included for lack of input data: Attendees, Summary of Conversation, Question Summaries.');
+    expect(html).toContain('Not included for lack of input data: Attendees, Summary of Conversation, Question Summaries, Social Performance.');
     expect(BUILTIN_HTML_TEMPLATE).toMatch(/@media print \{.*\.internal-notes \{ display: none; \}/);
   });
 
@@ -276,6 +276,91 @@ describe('ReportDocService', () => {
     });
   });
 
+  describe('social performance', () => {
+    const youtube: SocialChannelSummary = {
+      channel: 'youtube',
+      label: 'YouTube',
+      posts: 2,
+      paidPosts: 0,
+      organic: { views: 1600, likes: 16, comments: 3 },
+      paid: {},
+      asOf: '2026-10-20',
+      topPosts: [
+        { title: 'Big video', postedAt: '2026-10-02T15:00:00Z', paid: false, metrics: { views: 1500, likes: 15, comments: 3 } },
+        { title: 'Small <video>', postedAt: null, paid: false, metrics: { views: 100, likes: 1 } },
+      ],
+    };
+    const linkedin: SocialChannelSummary = {
+      channel: 'linkedin',
+      label: 'LinkedIn',
+      posts: 2,
+      paidPosts: 1,
+      organic: { clicks: 7 },
+      paid: { impressions: 1000, clicks: 10, engagements: 20, videoViews: 100, ctr: 0.01 },
+      asOf: '2026-10-20',
+      topPosts: [
+        { title: 'Boost', postedAt: null, paid: true, metrics: { impressions: 1000, clicks: 10, engagements: 20 } },
+        { title: 'Organic post', postedAt: null, paid: false, metrics: { clicks: 7 } },
+      ],
+    };
+
+    it('renders one slide per channel before the strategic takeaways', async () => {
+      const html = await service.renderExecutiveSummary({ ...content, social: { channels: [youtube, linkedin], notes: [] } });
+      const order = slideOrder(html);
+      expect(order.filter((s) => s === 'socialPerformance')).toHaveLength(2);
+      expect(order.indexOf('socialPerformance')).toBe(order.indexOf('conclusions') - 2);
+      expect(html).toContain('<h2>Social Performance – YouTube</h2>');
+      expect(html).toContain('<dt>Lifetime views</dt><dd>1,600</dd>');
+      expect(html).toContain('<td style="width:44%">Big video</td><td style="white-space:nowrap">Oct 2, 2026</td><td>1,500</td><td>15</td><td>3</td>');
+      expect(html).toContain('<td style="width:44%">Small &lt;video&gt;</td><td style="white-space:nowrap">–</td><td>100</td><td>1</td><td>–</td>');
+      expect(html).toContain('<p class="chart-note">Lifetime views as of Oct 20, 2026.</p>');
+      expect(html).not.toContain('Social Performance.</p>');
+    });
+
+    it('shows paid totals with click-through rate and marks paid posts', async () => {
+      const html = await service.renderExecutiveSummary({ ...content, social: { channels: [linkedin], notes: [] } });
+      expect(html).toContain('<dt>Posts</dt><dd>2 (1 paid)</dd>');
+      expect(html).toContain('<dt>Paid impressions</dt><dd>1,000</dd>');
+      expect(html).toContain('<dt>Organic clicks</dt><dd>7</dd>');
+      expect(html).toContain('<dt>Paid CTR</dt><dd>1.0%</dd>');
+      expect(html).toContain('<th>Type</th>');
+      expect(html).toContain('<td style="width:44%">Boost</td><td style="white-space:nowrap">–</td><td>Paid</td><td>1,000</td><td>10</td><td>20</td>');
+      expect(html).toContain('As of Oct 20, 2026.');
+      expect(html).not.toMatch(/cost|spend/i);
+    });
+
+    it('shows views gained in the period when Hub has it for the channel', async () => {
+      const gained: SocialChannelSummary = {
+        ...youtube,
+        organic: { ...youtube.organic, viewsGained: 600 },
+        topPosts: [{ ...youtube.topPosts[0], metrics: { ...youtube.topPosts[0].metrics, viewsGained: 600 } }],
+      };
+      const html = await service.renderExecutiveSummary({ ...content, social: { channels: [gained], notes: [] } });
+      expect(html).toContain('<dt>Views in period</dt><dd>600</dd>');
+      expect(html).not.toContain('<dt>Lifetime views</dt>');
+      expect(html).not.toContain('Lifetime views as of');
+    });
+
+    it('shows each post\'s views in the period when the channel total is lifetime', async () => {
+      // One post has a baseline and one does not, so Hub sends no channel total.
+      const mixed: SocialChannelSummary = {
+        ...youtube,
+        topPosts: [
+          { ...youtube.topPosts[0], metrics: { ...youtube.topPosts[0].metrics, viewsGained: 600 } },
+          youtube.topPosts[1],
+        ],
+      };
+      const html = await service.renderExecutiveSummary({ ...content, social: { channels: [mixed], notes: [] } });
+      expect(html).toContain('<dt>Lifetime views</dt><dd>1,600</dd>');
+      expect(html).toContain('<th>Views in period</th><th>Lifetime views</th><th>Likes</th>');
+      expect(html).toContain('<td style="width:44%">Big video</td><td style="white-space:nowrap">Oct 2, 2026</td><td>600</td><td>1,500</td><td>15</td>');
+      expect(html).toContain('<td style="width:44%">Small &lt;video&gt;</td><td style="white-space:nowrap">–</td><td>–</td><td>100</td><td>1</td>');
+      expect(html).toContain(
+        'Lifetime views as of Oct 20, 2026. Views in period need a snapshot from before the period or a publish date inside it.',
+      );
+    });
+  });
+
   describe('Q&A note', () => {
     it('replaces the empty Q&A sections with the Q&A capture note', async () => {
       const html = await service.renderExecutiveSummary({
@@ -284,7 +369,7 @@ describe('ReportDocService', () => {
         narrative: { ...narrative, hcpEngagementThemes: [], questionSummaries: [], audienceInsights: [] },
       });
       expect(html).toContain('Live Q&amp;A capture is not available yet.');
-      expect(html).toContain('Not included for lack of input data: Attendees, Summary of Conversation.');
+      expect(html).toContain('Not included for lack of input data: Attendees, Summary of Conversation, Social Performance.');
     });
 
     it('keeps the generic note when some Q&A sections rendered', async () => {
@@ -294,7 +379,7 @@ describe('ReportDocService', () => {
   });
 
   it('exposes every section, in the delivered report order', () => {
-    expect(SECTION_IDS).toHaveLength(17);
+    expect(SECTION_IDS).toHaveLength(18);
     expect(SECTION_IDS[0]).toBe('executiveSummary');
     expect(SECTION_IDS[SECTION_IDS.length - 1]).toBe('nextSteps');
   });

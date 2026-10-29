@@ -83,7 +83,7 @@ cht-reports does **not** query Aurora or cht-platform-tool. Generate-time data i
 
 `GET /api/campaigns/{campaignId}/report-packet?windowStart=&windowEnd=&sources=`
 
-Auth: `X-API-Key` (`CONTENTHUB_API_KEY`) + `X-Request-Id`. `CONTENTHUB_BASE_URL` may be origin, `/api/public`, or `/api/admin`; the client rewrites to the admin API.
+Auth: Cognito M2M bearer token, scope `hub/reports.read` (`CONTENTHUB_M2M_*`), plus `X-Request-Id`. Hub rejects `X-API-Key`. `CONTENTHUB_BASE_URL` may be origin, `/api/public`, or `/api/admin`; the client rewrites to the admin API.
 
 Response (camelCase): campaign identity, `hubspotRawData`, windowed `platformSlices`, `sessions` / `surveyResponses` (empty until Hub warehouse ingest), `inputCompleteness` per source (`ok` | `missing` | `error`). Missing sources are notes, not 500s. Hub does not call vendors on this path.
 
@@ -94,6 +94,7 @@ Fields the report reads beyond those (CPR-46; each is optional until Hub sends i
 | `kols[]` `{ name, title, institution }` | Key Opinion Leaders section and cover. Overrides the KOLs the model reads from the transcript; the report notes when it falls back to the transcript. |
 | `registeredCount`, `attendedCount`, `avgMinutesWatched`, `attendees[]` `{ specialty, institution, minutesWatched }` | Attendees section (CPR-42). Counts only; no names. |
 | `surveyQuestions[]` `{ id, prompt, type, options, surveyType }` | Survey chart labels and option order (CPR-43). Answers are matched on `id`. |
+| `socialPerformance` `{ linkedPosts, postsWithMetrics, notes[], channels[] }` | Social Performance section and the model's social summary (CPR-61). Hub picks one source per metric and leaves ad spend out. |
 
 For Zoom sessions with no audience Q&A, the three Q&A sections are replaced by one note that live Q&A capture is not available yet (CPR-33).
 

@@ -122,6 +122,34 @@ export interface AttendeesSummary {
   rows?: AttendeeRow[];
 }
 
+/** CPR-61: one of a channel's top posts. */
+export interface SocialPostRow {
+  title: string;
+  postedAt: string | null;
+  paid: boolean;
+  metrics: Record<string, number>;
+}
+
+/** CPR-61: one channel's totals for the report window. Ad spend is never included. */
+export interface SocialChannelSummary {
+  channel: string;
+  /** Display name, e.g. "YouTube". */
+  label: string;
+  posts: number;
+  paidPosts: number;
+  organic: Record<string, number>;
+  paid: Record<string, number>;
+  /** Date of the latest metrics row used. */
+  asOf: string | null;
+  topPosts: SocialPostRow[];
+}
+
+/** CPR-61 Social Performance section, from Content Hub's linked posts. */
+export interface SocialPerformanceSummary {
+  channels: SocialChannelSummary[];
+  notes: string[];
+}
+
 /** Free-text answers to one survey question, contact details redacted. */
 export interface SurveyFreeText {
   question: string;
@@ -155,6 +183,8 @@ export interface ExecutiveSummaryContent {
   kols: Kol[];
   kolSource: 'hub' | 'transcript';
   attendees: AttendeesSummary | null;
+  /** Absent on content stored before CPR-61. */
+  social?: SocialPerformanceSummary | null;
   /** Set for Zoom sessions: why the audience Q&A sections are absent. */
   qaNote?: string | null;
   /** Set when the report used transcripts (CPR-47): they are machine-generated. */
