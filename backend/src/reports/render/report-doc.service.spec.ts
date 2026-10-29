@@ -310,10 +310,10 @@ describe('ReportDocService', () => {
       expect(order.filter((s) => s === 'socialPerformance')).toHaveLength(2);
       expect(order.indexOf('socialPerformance')).toBe(order.indexOf('conclusions') - 2);
       expect(html).toContain('<h2>Social Performance – YouTube</h2>');
-      expect(html).toContain('<dt>Views</dt><dd>1,600</dd>');
+      expect(html).toContain('<dt>Lifetime views</dt><dd>1,600</dd>');
       expect(html).toContain('<td style="width:44%">Big video</td><td style="white-space:nowrap">Oct 2, 2026</td><td>1,500</td><td>15</td><td>3</td>');
       expect(html).toContain('<td style="width:44%">Small &lt;video&gt;</td><td style="white-space:nowrap">–</td><td>100</td><td>1</td><td>–</td>');
-      expect(html).toContain('Views are lifetime totals as of Oct 20, 2026.');
+      expect(html).toContain('<p class="chart-note">Lifetime views as of Oct 20, 2026.</p>');
       expect(html).not.toContain('Social Performance.</p>');
     });
 
@@ -337,8 +337,27 @@ describe('ReportDocService', () => {
       };
       const html = await service.renderExecutiveSummary({ ...content, social: { channels: [gained], notes: [] } });
       expect(html).toContain('<dt>Views in period</dt><dd>600</dd>');
-      expect(html).not.toContain('<dt>Views</dt>');
-      expect(html).not.toContain('lifetime totals');
+      expect(html).not.toContain('<dt>Lifetime views</dt>');
+      expect(html).not.toContain('Lifetime views as of');
+    });
+
+    it('shows each post\'s views in the period when the channel total is lifetime', async () => {
+      // One post has a baseline and one does not, so Hub sends no channel total.
+      const mixed: SocialChannelSummary = {
+        ...youtube,
+        topPosts: [
+          { ...youtube.topPosts[0], metrics: { ...youtube.topPosts[0].metrics, viewsGained: 600 } },
+          youtube.topPosts[1],
+        ],
+      };
+      const html = await service.renderExecutiveSummary({ ...content, social: { channels: [mixed], notes: [] } });
+      expect(html).toContain('<dt>Lifetime views</dt><dd>1,600</dd>');
+      expect(html).toContain('<th>Views in period</th><th>Lifetime views</th><th>Likes</th>');
+      expect(html).toContain('<td style="width:44%">Big video</td><td style="white-space:nowrap">Oct 2, 2026</td><td>600</td><td>1,500</td><td>15</td>');
+      expect(html).toContain('<td style="width:44%">Small &lt;video&gt;</td><td style="white-space:nowrap">–</td><td>–</td><td>100</td><td>1</td>');
+      expect(html).toContain(
+        'Lifetime views as of Oct 20, 2026. Views in period need a snapshot from before the period or a publish date inside it.',
+      );
     });
   });
 

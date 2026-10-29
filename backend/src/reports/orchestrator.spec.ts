@@ -422,7 +422,7 @@ describe('report content from the packet (CPR-46)', () => {
     expect(content.social?.channels.map((c) => c.label)).toEqual(['YouTube']);
     const userContent = companion.generate.mock.calls[0][0].userContent;
     expect(userContent).toContain(
-      'Social performance (computed; quote these numbers exactly):\nYouTube: 1 post, as of 2026-10-20; organic: Views 1,500, Likes 15. Top post: "Big video" (Views 1,500)\nYouTube views are lifetime totals',
+      'Social performance (computed; quote these numbers exactly):\nYouTube: 1 post, as of 2026-10-20; organic: Lifetime views 1,500, Likes 15. Top posts: "Big video" (Lifetime views 1,500, Likes 15)\nYouTube views are lifetime totals',
     );
   });
 

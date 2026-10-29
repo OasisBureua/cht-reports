@@ -701,12 +701,14 @@ function socialSlide(c: SocialChannelSummary): string {
       ].join('')
     : '';
   const asOf = c.asOf ? shortDate(c.asOf) : null;
-  const note =
-    c.channel === 'youtube' && 'views' in c.organic && !('viewsGained' in c.organic)
-      ? `Views are lifetime totals${asOf ? ` as of ${asOf}` : ''}.`
-      : asOf
-        ? `As of ${asOf}.`
-        : '';
+  const lifetime = 'views' in c.organic && !('viewsGained' in c.organic);
+  const partial = metrics.includes('viewsGained') && c.topPosts.some((p) => !('viewsGained' in p.metrics));
+  const note = [
+    lifetime ? `Lifetime views${asOf ? ` as of ${asOf}` : ''}.` : asOf ? `As of ${asOf}.` : '',
+    partial ? 'Views in period need a snapshot from before the period or a publish date inside it.' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
   return slide(
     'socialPerformance',
     `Social Performance – ${c.label}`,

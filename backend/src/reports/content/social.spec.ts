@@ -73,6 +73,29 @@ describe('social metrics', () => {
     expect(postMetrics(summary.channels[0], 3)).toEqual(['viewsGained']);
   });
 
+  it('keeps each post\'s views gained when the channel total is lifetime', () => {
+    const summary = buildSocialSummary(
+      packet([
+        channel({
+          posts: 2,
+          organic: { views: 1600, likes: 16 },
+          asOf: '2026-10-20',
+          topPosts: [
+            { postId: 'a', title: 'A', url: null, postedAt: null, paid: false, metrics: { views: 1500, viewsGained: 600, likes: 15 } },
+            { postId: 'b', title: 'B', url: null, postedAt: null, paid: false, metrics: { views: 100, likes: 1 } },
+          ],
+        }),
+      ]),
+    )!;
+    const youtube = summary.channels[0];
+    expect(organicMetrics(youtube)).toEqual(['views', 'likes']);
+    expect(postMetrics(youtube, 3)).toEqual(['viewsGained', 'views', 'likes']);
+    expect(socialContext(summary)).toBe(
+      'YouTube: 2 posts, as of 2026-10-20; organic: Lifetime views 1,600, Likes 16. ' +
+        'Top posts: "A" (Views in period 600, Likes 15); "B" (Lifetime views 100, Likes 1)',
+    );
+  });
+
   it('formats counts with separators and CTR as a percent', () => {
     expect(formatMetric('impressions', 12345.4)).toBe('12,345');
     expect(formatMetric('ctr', 0.0123)).toBe('1.2%');

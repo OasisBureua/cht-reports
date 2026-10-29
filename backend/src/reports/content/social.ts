@@ -17,7 +17,7 @@ const CHANNEL_LABELS: Record<string, string> = {
 };
 
 export const SOCIAL_METRIC_LABELS: Record<string, string> = {
-  views: 'Views',
+  views: 'Lifetime views',
   viewsGained: 'Views in period',
   impressions: 'Impressions',
   clicks: 'Clicks',
@@ -29,12 +29,15 @@ export const SOCIAL_METRIC_LABELS: Record<string, string> = {
   videoCompletions: 'Video completions',
 };
 
-/** Display order. `views` and `viewsGained` take the same place: see viewsMetric. */
+/** Display order. `views` and `viewsGained` take the same place: see viewsMetric and postMetrics. */
 const ORGANIC_ORDER = ['views', 'impressions', 'clicks', 'engagements', 'likes', 'comments', 'videoViews', 'videoCompletions'];
 const PAID_ORDER = ['impressions', 'clicks', 'ctr', 'engagements', 'videoViews', 'videoCompletions'];
 
 /** Two lines in the top-posts table. */
 const MAX_TITLE = 70;
+/** Top posts per channel in the model's summary, and metrics per post. */
+const CONTEXT_POSTS = 3;
+const CONTEXT_POST_METRICS = 2;
 
 function finite(values: Record<string, unknown> | null | undefined): Record<string, number> {
   const out: Record<string, number> = {};
@@ -90,12 +93,19 @@ export function paidMetrics(channel: SocialChannelSummary): string[] {
   return PAID_ORDER.filter((m) => m in channel.paid);
 }
 
-/** Metric columns for the top-posts table. */
+/**
+ * Metric columns for the top-posts table. A post's views in the period show
+ * whenever Hub has them, even when the channel total is lifetime (a post
+ * without a baseline keeps Hub from summing the channel); lifetime views
+ * follow only for posts without them.
+ */
 export function postMetrics(channel: SocialChannelSummary, max: number): string[] {
-  const views = viewsMetric(channel);
-  return ORGANIC_ORDER.map((m) => (m === 'views' ? views : m))
-    .filter((m) => channel.topPosts.some((p) => m in p.metrics))
-    .slice(0, max);
+  const has = (m: string) => channel.topPosts.some((p) => m in p.metrics);
+  const views = [
+    ...(has('viewsGained') ? ['viewsGained'] : []),
+    ...(channel.topPosts.some((p) => 'views' in p.metrics && !('viewsGained' in p.metrics)) ? ['views'] : []),
+  ];
+  return [...views, ...ORGANIC_ORDER.filter((m) => m !== 'views' && has(m))].slice(0, max);
 }
 
 export function formatMetric(metric: string, value: number): string {
@@ -118,11 +128,16 @@ export function socialContext(summary: SocialPerformanceSummary | null): string 
       organic.length ? `organic: ${metricList(c.organic, organic)}` : null,
       paid.length ? `paid: ${metricList(c.paid, paid)}` : null,
     ].filter(Boolean);
-    const top = c.topPosts[0];
-    const topMetrics = top ? postMetrics({ ...c, topPosts: [top] }, 1) : [];
+    const top = c.topPosts
+      .slice(0, CONTEXT_POSTS)
+      .map((p) => {
+        const metrics = postMetrics({ ...c, topPosts: [p] }, CONTEXT_POST_METRICS);
+        return metrics.length ? `"${p.title}" (${metricList(p.metrics, metrics)})` : null;
+      })
+      .filter(Boolean);
     return [
       `${c.label}: ${posts}${c.asOf ? `, as of ${c.asOf}` : ''}; ${parts.join('; ')}`,
-      top && topMetrics.length ? `. Top post: "${top.title}" (${metricList(top.metrics, topMetrics)})` : '',
+      top.length ? `. Top posts: ${top.join('; ')}` : '',
     ].join('');
   });
   return [...lines, ...summary.notes].join('\n');
